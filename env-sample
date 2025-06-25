@@ -1,0 +1,9 @@
+# Environment variables for FastAPI project
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_PASSWORD=
+
+# OpenAI API Key for Agno
+OPENAI_API_KEY=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
+

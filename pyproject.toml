@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "dspy-agent"
+version = "0.1.0"
+description = ""
+authors = ["saurabh <saurabh@tarkalabs.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12, <3.14"
+fastapi = "^0.115.13"
+uvicorn = "^0.34.3"
+sse-starlette = "^2.3.6"
+dspy = "^2.6.27"
+ollama = "^0.5.1"
+elasticsearch = "^9.0.2"
+pyodbc = "^5.2.0"
+mcp = "^1.9.4"
+sentence-transformers = "^4.1.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

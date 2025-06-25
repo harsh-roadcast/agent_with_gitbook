@@ -1,0 +1,38 @@
+.venv/
+.idea/
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+# C extensions
+*.so
+# Distribution / packaging
+.Python
+build/
+dist/
+# PyInstaller
+#  Usually contains a root-level main.py script.
+#  PyInstaller also adds build/ and dist/ directories.
+#  See https://pyinstaller.readthedocs.io/en/stable/usage.html#using-pyinstaller
+#  for more information.
+*.egg-info/
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+# Translations
+*.mo
+# Django stuff:
+#  If you set this to something other than "staticfiles", make sure to
+#  also update your Django settings file.
+staticfiles/
+# Flask stuff:
+poetry.lock
+logs/
+.env
