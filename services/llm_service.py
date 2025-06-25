@@ -15,7 +15,7 @@ def init_llm(model_name: str):
         local_llm = dspy.LM(model='openai/gpt-4o-mini', api_key=settings.OPENAI_API_KEY)
         dspy.settings.configure(lm=local_llm)
         #TODO: Configure custom cache using redis
-        dspy.configure_cache(enable_disk_cache=False, enable_memory_cache=False)
+        dspy.configure_cache(enable_disk_cache=True, enable_memory_cache=True)
         logger.info(f"Successfully configured DSPy with Ollama model: {model_name}")
         return local_llm
     except Exception as e:
