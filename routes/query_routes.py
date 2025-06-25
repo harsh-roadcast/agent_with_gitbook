@@ -16,51 +16,46 @@ router = APIRouter(tags=["query"])
 
 async def generate_stream(query: str, session_id: str, model="LLM_TEXT_SQL"):
     ad = ActionDecider()
-    raw_result = ad(user_query=query, conversation_history=[])
-    # Assume raw_result is dict-like:
-    result_dict = {
-        "database": raw_result.get("database"),
-        "data": raw_result.get("data"),
-        "summary": raw_result.get("summary"),
-        "chart_config": raw_result.get("chart_config"),
-        "html": raw_result.get("chart_html"),
-    }
 
-    # Stream each field: send as plain string, not JSON string!
-    for field in ["database", "data", "summary", "chart_config", "html"]:
-        value = result_dict[field]
-        if value is not None:
-            # For chart_html, send HTML string directly
-            if field == "html":
-                content = f"**Chart:**\n{value}\n\n\n"   # already a HTML string
-            # For summary/data, send as pretty string or markdown
-            elif field == "summary":
-                content = f"**Summary:**\n{value}\n\n\n"
-            elif field == "data":
-                # If data is dict/list, pretty print as markdown table (optional)
-                content = f"**Data:**\n{list_of_dicts_to_markdown_table(value)}\n\n\n"
-            else:
-                content = f"Database: \n{str(value)}\n\n\n"
-            # OpenAI-compatible chunk
-            response = {
-                "id": f"chatcmpl-{session_id}-{time.time()}",
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {
-                            "content": content,
-                            "field": field,
-                        },
-                        "finish_reason": None
-                    }
-                ]
-            }
-            yield f"event: delta\n"
-            yield f"{json.dumps(response)}\n\n"
-            await asyncio.sleep(0.1)
+    # Use the new async version that yields results as they become available
+    async for field, value in ad.process_async(user_query=query, conversation_history=[]):
+        # Format the content based on field type
+        if field == "database":
+            content = f"Database: {value}\n\n\n"
+        elif field == "data":
+            content = f"**Data:**\n{list_of_dicts_to_markdown_table(value)}\n\n\n"
+        elif field == "summary":
+            content = f"**Summary:**\n{value}\n\n\n"
+        elif field == "chart_html":
+            content = f"**Chart:**\n{value}\n\n\n"   # already a HTML string
+        elif field == "error":
+            content = f"**Error:**\n{value}\n\n\n"
+        else:
+            # For other fields like chart_config
+            content = f"**{field.capitalize()}:**\n{str(value)}\n\n\n"
+
+        # Create OpenAI-compatible chunk`
+        response = {
+            "id": f"chatcmpl-{session_id}-{time.time()}",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "content": content,
+                        "field": field,
+                    },
+                    "finish_reason": None
+                }
+            ]
+        }
+        yield f"event: delta\n"
+        yield f"{json.dumps(response)}\n\n"
+
+        # Small delay to prevent overwhelming the client
+        await asyncio.sleep(0.1)
 
     # Final [DONE] chunk
     response = {
@@ -104,16 +99,14 @@ async def process_query(request: Request):
             return EventSourceResponse(generate_stream(user_message, session_id, model=model))
 
         else:
-            # Non-streaming: just return the full dict as one message
+            # Non-streaming: collect all results and return as one response
             ad = ActionDecider()
-            raw_result = ad(user_query=user_message, conversation_history=[])
-            result_dict = {
-                "database": raw_result.get("database"),
-                "data": raw_result.get("data"),
-                "summary": raw_result.get("summary"),
-                "chart_config": raw_result.get("chart_config"),
-                "chart_html": raw_result.get("chart_html"),
-            }
+            result_dict = {}
+
+            # Collect all the async results into a dictionary
+            async for field, value in ad.process_async(user_query=user_message, conversation_history=[]):
+                result_dict[field] = value
+
             response = {
                 "id": f"chatcmpl-{session_id}-{time.time()}",
                 "object": "chat.completion",
@@ -152,4 +145,3 @@ def list_of_dicts_to_markdown_table(lst):
         values = [str(row.get(col, "")) for col in header]
         md += "| " + " | ".join(values) + " |\n"
     return md
-

@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import Dict, Any, Optional, Tuple
+import asyncio
+from typing import Dict, Any, Optional, Tuple, AsyncGenerator, Union
 
 import dspy
 
@@ -42,7 +43,7 @@ class ActionDecider(dspy.Module):
 
     def forward(self, user_query: str, conversation_history: Optional[str] = None) -> Dict[str, Any]:
         """
-        Process a user query and return relevant data including summaries and visualizations.
+        Legacy synchronous method that processes a user query and returns all results at once.
 
         Args:
             user_query: The user's query string
@@ -68,6 +69,64 @@ class ActionDecider(dspy.Module):
             logger.error(f"Error in ActionDecider: {e}", exc_info=True)
             # Return a default action if processing fails
             return {"database": DatabaseType.VECTOR, "action": "default", "error": str(e)}
+
+    async def process_async(self, user_query: str, conversation_history: Optional[list] = None) -> AsyncGenerator[Tuple[str, Any], None]:
+        """
+        Asynchronously process a user query and yield results as they become available.
+
+        Args:
+            user_query: The user's query string
+            conversation_history: Optional conversation history for context
+
+        Yields:
+            Tuples of (field_name, field_value) as results are generated
+        """
+        try:
+            # Step 1: Select the appropriate database and yield result
+            database = self._select_database(user_query)
+            yield "database", database
+
+            # Step 2: Execute the query on selected database
+            result = self._execute_query(database, user_query)
+            if not result:
+                logger.warning("No results returned from query processor")
+                yield "error", "No results returned from query processor"
+                return
+
+            # Step 3: Parse JSON data
+            data_json, error = self._parse_json_data(result)
+            if error:
+                yield "error", error
+                return
+
+            # Step 4: Extract source data and yield
+            try:
+                data = [i['_source'] for i in data_json['hits']['hits']]
+                yield "data", data
+            except (KeyError, TypeError) as e:
+                logger.warning(f"Could not extract source data: {e}")
+                yield "data", []
+
+            # Step 5: Generate summary (potentially time-consuming)
+            summary_task = asyncio.create_task(self._generate_summary_async(user_query, data_json, conversation_history))
+
+            # Step 6: Generate chart (can run in parallel with summary)
+            chart_task = asyncio.create_task(self._generate_chart_async(data_json, user_query))
+
+            # Yield results as they become available
+            summary_result = await summary_task
+            if summary_result:
+                yield "summary", summary_result.summary
+
+            chart_config, chart_html = await chart_task
+            if chart_config:
+                yield "chart_config", chart_config
+            if chart_html:
+                yield "chart_html", chart_html
+
+        except Exception as e:
+            logger.error(f"Error in ActionDecider async processing: {e}", exc_info=True)
+            yield "error", str(e)
 
     def _select_database(self, user_query: str) -> str:
         """
@@ -138,7 +197,7 @@ class ActionDecider(dspy.Module):
             logger.error(f"Error executing query on {database}: {e}", exc_info=True)
             return None
 
-    def _parse_json_data(self, result: Any) -> tuple[None, str] | tuple[Any, None]:
+    def _parse_json_data(self, result: Any) -> Tuple[Dict[str, Any], Optional[str]]:
         """
         Parse JSON data from query results.
 
@@ -192,6 +251,32 @@ class ActionDecider(dspy.Module):
             logger.error(f"Error generating summary: {e}", exc_info=True)
             return None
 
+    async def _generate_summary_async(self, user_query: str, data_json: Dict,
+                                     conversation_history: Optional[str] = None) -> Any:
+        """
+        Asynchronously generate a summary of the results.
+
+        Args:
+            user_query: The user's query string
+            data_json: Parsed JSON data
+            conversation_history: Optional conversation history for context
+
+        Returns:
+            Summary object or None if generation fails
+        """
+        try:
+            logger.info(f"Generating summary asynchronously for: {user_query}")
+            # Use a separate thread for CPU-bound operations via to_thread
+            return await asyncio.to_thread(
+                self.summarizer,
+                user_query=user_query,
+                conversation_history=conversation_history,
+                json_results=json.dumps(data_json)
+            )
+        except Exception as e:
+            logger.error(f"Error generating summary asynchronously: {e}", exc_info=True)
+            return None
+
     def _generate_chart(self, data_json: Dict, user_query: str) -> Tuple[Dict, Optional[str]]:
         """
         Generate chart configuration and HTML.
@@ -222,6 +307,25 @@ class ActionDecider(dspy.Module):
 
         except Exception as e:
             logger.error(f"Error generating chart: {e}", exc_info=True)
+            return None, None
+
+    async def _generate_chart_async(self, data_json: Dict, user_query: str) -> Tuple[Optional[Dict], Optional[str]]:
+        """
+        Asynchronously generate chart configuration and HTML.
+
+        Args:
+            data_json: Parsed JSON data
+            user_query: The user's query string
+
+        Returns:
+            Tuple of (chart_data, chart_html) or (None, None) if generation fails
+        """
+        try:
+            logger.info(f"Generating chart asynchronously for query: {user_query}")
+            # Use a separate thread for CPU-bound operations
+            return await asyncio.to_thread(self._generate_chart, data_json, user_query)
+        except Exception as e:
+            logger.error(f"Error generating chart asynchronously: {e}", exc_info=True)
             return None, None
 
     def _process_results(self, database: str, user_query: str, result: Any,
