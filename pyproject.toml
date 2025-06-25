@@ -2,7 +2,7 @@
 name = "dspy-agent"
 version = "0.1.0"
 description = ""
-authors = ["saurabh <saurabh@tarkalabs.com>"]
+authors = ["saurabh <saurabh.1e1@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
