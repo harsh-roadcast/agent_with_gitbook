@@ -22,6 +22,8 @@ async def generate_stream(query: str, session_id: str, model="LLM_TEXT_SQL"):
         # Format the content based on field type
         if field == "database":
             content = f"Database: {value}\n\n\n"
+        elif field == "elastic_query":
+            content = f"**Elasticsearch Query:**\n{value}\n\n\n"
         elif field == "data":
             content = f"**Data:**\n{list_of_dicts_to_markdown_table(value)}\n\n\n"
         elif field == "summary":

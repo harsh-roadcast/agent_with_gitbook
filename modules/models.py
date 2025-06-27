@@ -93,6 +93,11 @@ class ActionDecider(dspy.Module):
                 yield "error", "No results returned from query processor"
                 return
 
+            # Step 2.5: Extract and yield the elastic query as a code block
+            if hasattr(result, 'elastic_query') and result.elastic_query:
+                elastic_query_formatted = self._format_elastic_query_as_code_block(result.elastic_query)
+                yield "elastic_query", elastic_query_formatted
+
             # Step 3: Parse JSON data
             data_json, error = self._parse_json_data(result)
             if error:
@@ -369,3 +374,25 @@ class ActionDecider(dspy.Module):
             response["chart_html"] = chart_html
 
         return response
+
+    def _format_elastic_query_as_code_block(self, elastic_query: Union[dict, str]) -> str:
+        """
+        Format the Elasticsearch query as a Markdown code block.
+
+        Args:
+            elastic_query: The Elasticsearch query (dict or string)
+
+        Returns:
+            Formatted query string as a Markdown code block
+        """
+        try:
+            if isinstance(elastic_query, dict):
+                # Pretty print the JSON query
+                query_str = json.dumps(elastic_query, indent=2, ensure_ascii=False)
+            else:
+                query_str = str(elastic_query)
+
+            return f"```json\n{query_str}\n```"
+        except Exception as e:
+            logger.error(f"Error formatting elastic query: {e}")
+            return f"```\n{str(elastic_query)}\n```"
