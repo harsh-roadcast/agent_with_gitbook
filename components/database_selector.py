@@ -1,10 +1,10 @@
 """Database selection implementation using DSPy."""
 import logging
-import dspy
-from typing import Optional
 
-from core.interfaces import IDatabaseSelector, DatabaseType
+import dspy
+
 from core.exceptions import DatabaseSelectionError
+from core.interfaces import IDatabaseSelector, DatabaseType
 from modules.signatures import DatabaseSelectionSignature
 from util.performance import monitor_performance
 

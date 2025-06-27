@@ -7,3 +7,23 @@ REDIS_PASSWORD=
 # OpenAI API Key for Agno
 OPENAI_API_KEY=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
 
+# JWT Authentication Configuration
+JWT_SECRET_KEY=your-super-secret-jwt-key-here-change-this-in-production
+JWT_ALGORITHM=HS256
+TOKEN_EXPIRE_MINUTES=30
+
+# Elasticsearch Configuration
+ES_HOST=https://62.72.41.235:9200
+ES_USERNAME=elastic
+ES_PASSWORD=GGgCYcnpA_0R_fT5TfFY
+ES_VERIFY_CERTS=false
+ES_REQUEST_TIMEOUT=30
+ES_INSTRUCTIONS=
+
+# Model Configuration
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+DEFAULT_CHART_TYPE=column
+DEFAULT_QUERY_SIZE=10
+
+# Logging
+LOG_LEVEL=INFO

@@ -1,17 +1,17 @@
 """Dependency injection container for the DSPy agent system."""
 import logging
 
+from agents.query_agent import QueryAgent
+from components.chart_generator import DSPyChartGenerator
+from components.database_selector import DSPyDatabaseSelector
+from components.query_executor import DSPyQueryExecutor
+from components.result_processor import ResultProcessor
+from components.summary_generator import DSPySummaryGenerator
+from core.config import config_manager
 from core.interfaces import (
     IQueryAgent, IDatabaseSelector, IQueryExecutor, IResultProcessor,
     ISummaryGenerator, IChartGenerator
 )
-from core.config import config_manager
-from components.database_selector import DSPyDatabaseSelector
-from components.query_executor import DSPyQueryExecutor
-from components.summary_generator import DSPySummaryGenerator
-from components.chart_generator import DSPyChartGenerator
-from components.result_processor import ResultProcessor
-from agents.query_agent import QueryAgent
 
 logger = logging.getLogger(__name__)
 

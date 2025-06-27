@@ -1,12 +1,13 @@
 """Summary generation implementation using DSPy."""
+import asyncio
 import json
 import logging
-import asyncio
-import dspy
 from typing import Dict, Optional
 
-from core.interfaces import ISummaryGenerator
+import dspy
+
 from core.exceptions import SummaryGenerationError
+from core.interfaces import ISummaryGenerator
 from modules.signatures import SummarySignature
 from util.performance import monitor_performance
 

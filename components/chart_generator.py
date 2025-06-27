@@ -1,12 +1,13 @@
 """Chart generation implementation using DSPy."""
+import asyncio
 import json
 import logging
-import asyncio
-import dspy
 from typing import Dict, Optional, Tuple, List, Any
 
-from core.interfaces import IChartGenerator
+import dspy
+
 from core.exceptions import ChartGenerationError
+from core.interfaces import IChartGenerator
 from modules.signatures import ChartAxisSelector
 from util.chart_utils import generate_chart_from_config
 from util.performance import monitor_performance

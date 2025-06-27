@@ -1,11 +1,10 @@
 """Result processing implementation."""
+import asyncio
 import json
 import logging
-import asyncio
 from typing import Dict, Any, Optional, Tuple, AsyncGenerator, Union
 
 from core.interfaces import IResultProcessor, ISummaryGenerator, IChartGenerator, QueryResult, ProcessedResult
-from core.exceptions import DataParsingError
 from util.performance import monitor_performance
 
 logger = logging.getLogger(__name__)

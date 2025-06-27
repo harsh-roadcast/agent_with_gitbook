@@ -32,10 +32,19 @@ class ModelConfig:
 
 
 @dataclass
+class AuthConfig:
+    """Authentication configuration."""
+    jwt_secret_key: str = ""
+    jwt_algorithm: str = "HS256"
+    token_expire_minutes: int = 30
+
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
     elasticsearch: ElasticsearchConfig
     models: ModelConfig
+    auth: AuthConfig
     es_schema: str
     es_instructions: str
     log_level: str = "INFO"
@@ -86,9 +95,16 @@ class ConfigManager:
             default_query_size=int(os.getenv('DEFAULT_QUERY_SIZE', '10'))
         )
 
+        auth_config = AuthConfig(
+            jwt_secret_key=os.getenv('JWT_SECRET_KEY', ''),
+            jwt_algorithm=os.getenv('JWT_ALGORITHM', 'HS256'),
+            token_expire_minutes=int(os.getenv('TOKEN_EXPIRE_MINUTES', '30'))
+        )
+
         return AppConfig(
             elasticsearch=elasticsearch_config,
             models=model_config,
+            auth=auth_config,
             es_schema=self._get_es_schema(),
             es_instructions=os.getenv('ES_INSTRUCTIONS', ''),
             log_level=os.getenv('LOG_LEVEL', 'INFO')

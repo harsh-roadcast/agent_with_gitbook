@@ -2,12 +2,12 @@
 import logging
 from typing import Optional, AsyncGenerator, Tuple, Any
 
+from core.config import config_manager
+from core.exceptions import DSPyAgentException
 from core.interfaces import (
     IQueryAgent, IDatabaseSelector, IQueryExecutor, IResultProcessor,
     ProcessedResult
 )
-from core.config import config_manager
-from core.exceptions import DSPyAgentException
 from util.performance import monitor_performance
 
 logger = logging.getLogger(__name__)

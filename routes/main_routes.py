@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import HTMLResponse
 import logging
-import pathlib
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
 
 # Configure logging
 logger = logging.getLogger(__name__)

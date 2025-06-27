@@ -17,6 +17,8 @@ pyodbc = "^5.2.0"
 mcp = "^1.9.4"
 sentence-transformers = "^4.1.0"
 pytest = "^8.4.1"
+jwt = "^1.4.0"
+pyjwt = "^2.10.1"
 
 
 [build-system]

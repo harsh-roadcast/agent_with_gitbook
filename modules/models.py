@@ -5,8 +5,8 @@ import dspy
 
 # Import new modular components
 from core.container import get_query_agent
-from core.interfaces import IQueryAgent
 from core.exceptions import DSPyAgentException
+from core.interfaces import IQueryAgent
 
 # Configure logging
 logger = logging.getLogger(__name__)

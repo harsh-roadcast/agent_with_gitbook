@@ -1,20 +1,21 @@
 import logging
-from fastapi import FastAPI, Request, Depends
-from fastapi.staticfiles import StaticFiles
 import pathlib
-import os
-from functools import lru_cache
 
-from routes import query_routes, main_routes
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+
+from routes import query_routes, main_routes, auth_routes
 from services.llm_service import init_llm
-from config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize the FastAPI application
-app = FastAPI(title="DSPy Agent API", description="FastAPI application with DSPy for natural language processing")
+app = FastAPI(
+    title="DSPy Agent API",
+    description="FastAPI application with DSPy for natural language processing and JWT authentication"
+)
 
 # Set up static files directory
 static_dir = pathlib.Path(__file__).parent / "static"
@@ -29,9 +30,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Or specify your allowed frontend URLs
+    allow_origins=["*"],  # Configure appropriately for production
     allow_credentials=True,
-    allow_methods=["*"],  # Or ["GET", "POST", "OPTIONS"]
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -40,7 +41,12 @@ def get_static_dir():
     return static_dir
 
 
-# Set up routes directly
+# Include routers
+app.include_router(query_routes.router)
+app.include_router(main_routes.router)
+app.include_router(auth_routes.router)
+
+# Legacy routes for backward compatibility
 @app.post("/v1/chat/completions")
 @app.options("/v1/chat/completions")
 async def process_query_with_deps(request: Request):

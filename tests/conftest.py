@@ -1,11 +1,11 @@
 """Test configuration and fixtures for pytest."""
-import pytest
-from unittest.mock import Mock, patch
 import os
 import tempfile
-import json
+from unittest.mock import Mock, patch
 
-from core.config import ConfigManager, AppConfig, ElasticsearchConfig, ModelConfig
+import pytest
+
+from core.config import AppConfig, ElasticsearchConfig, ModelConfig
 from core.container import DIContainer
 
 

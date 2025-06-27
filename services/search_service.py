@@ -1,9 +1,10 @@
-import asyncio
+import logging
 import logging
 import os
-from typing import Dict, List, Any
+from typing import List
 
 from elasticsearch import Elasticsearch
+
 try:
     from sentence_transformers import SentenceTransformer
     _has_sentence_transformers = True

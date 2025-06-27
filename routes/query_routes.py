@@ -1,21 +1,27 @@
-from fastapi import FastAPI, APIRouter, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from sse_starlette.sse import EventSourceResponse
-import json
-import time
-import logging
 import asyncio
+import json
+import logging
+import time
+from typing import Dict, Any
+
+from fastapi import APIRouter, Request, Depends
+from fastapi.responses import JSONResponse
+from sse_starlette.sse import EventSourceResponse
 
 # Replace with your actual model call/imports
 from modules.models import ActionDecider
+from services.auth_service import get_current_user
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["query"])
 
-async def generate_stream(query: str, session_id: str, model="LLM_TEXT_SQL"):
+async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any], model="LLM_TEXT_SQL"):
+    """Generate streaming response with user context."""
     ad = ActionDecider()
+    user_id = user_info.get('user_id')
+
+    logger.info(f"Processing query for user {user_id}: {query[:100]}...")
 
     # Use the new async version that yields results as they become available
     async for field, value in ad.process_async(user_query=query, conversation_history=[]):
@@ -36,7 +42,7 @@ async def generate_stream(query: str, session_id: str, model="LLM_TEXT_SQL"):
             # For other fields like chart_config
             content = f"**{field.capitalize()}:**\n{str(value)}\n\n\n"
 
-        # Create OpenAI-compatible chunk`
+        # Create OpenAI-compatible chunk with user context
         response = {
             "id": f"chatcmpl-{session_id}-{time.time()}",
             "object": "chat.completion.chunk",
@@ -51,10 +57,11 @@ async def generate_stream(query: str, session_id: str, model="LLM_TEXT_SQL"):
                     },
                     "finish_reason": None
                 }
-            ]
+            ],
+            "user_id": user_id  # Include user context in response
         }
         yield f"event: delta\n"
-        yield f"{json.dumps(response)}\n\n"
+        yield f"data: {json.dumps(response)}\n\n"
 
         # Small delay to prevent overwhelming the client
         await asyncio.sleep(0.1)
@@ -71,15 +78,17 @@ async def generate_stream(query: str, session_id: str, model="LLM_TEXT_SQL"):
                 "delta": {"content": ""},
                 "finish_reason": "stop"
             }
-        ]
+        ],
+        "user_id": user_id
     }
     yield f"data: {json.dumps(response)}\n\n"
     yield "data: [DONE]\n\n"
 
 @router.post("/v1/chat/completions")
-async def process_query(request: Request):
+async def process_query(request: Request, user_info: Dict[str, Any] = Depends(get_current_user)):
     """
     OpenAI-compatible chat completion endpoint for streaming and non-stream.
+    Now includes JWT authentication.
     """
     try:
         data = await request.json()
@@ -95,10 +104,12 @@ async def process_query(request: Request):
         stream = data.get("stream", False)
         session_id = data.get("session_id", "default")
         model = data.get("model", "default")
-        logger.info(f"Received chat completion request with model: {model}, stream: {stream}")
+        user_id = user_info.get('user_id')
+
+        logger.info(f"Received chat completion request from user {user_id} with model: {model}, stream: {stream}")
 
         if stream:
-            return EventSourceResponse(generate_stream(user_message, session_id, model=model))
+            return EventSourceResponse(generate_stream(user_message, session_id, user_info, model=model))
 
         else:
             # Non-streaming: collect all results and return as one response
@@ -119,7 +130,7 @@ async def process_query(request: Request):
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": json.dumps(result_dict, ensure_ascii=False, indent=2)
+                            "content": result_dict
                         },
                         "finish_reason": "stop"
                     }
@@ -128,11 +139,12 @@ async def process_query(request: Request):
                     "prompt_tokens": 0,
                     "completion_tokens": 0,
                     "total_tokens": 0
-                }
+                },
+                "user_id": user_id  # Include user context in response
             }
             return JSONResponse(content=response)
     except Exception as e:
-        logger.error(f"Error processing query: {e}", exc_info=True)
+        logger.error(f"Error processing query for user {user_info.get('user_id', 'unknown')}: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"error": f"Server error: {str(e)}"})
 
 

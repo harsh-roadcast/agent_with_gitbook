@@ -1,11 +1,11 @@
 """Integration tests for the complete query agent system."""
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
-import asyncio
+from unittest.mock import Mock
 
-from core.interfaces import DatabaseType, QueryResult, ProcessedResult
-from core.container import DIContainer
+import pytest
+
 from agents.query_agent import QueryAgent
+from core.container import DIContainer
+from core.interfaces import DatabaseType, QueryResult, ProcessedResult
 
 
 class TestQueryAgentIntegration:

@@ -1,12 +1,10 @@
 """Tests for the core interfaces and data structures."""
-import pytest
 from unittest.mock import Mock, AsyncMock
-from typing import Dict, Any, List
 
 from core.interfaces import (
     DatabaseType, QueryResult, ProcessedResult,
     IDatabaseSelector, IQueryExecutor, ISummaryGenerator,
-    IChartGenerator, IResultProcessor, IQueryAgent
+    IChartGenerator
 )
 
 

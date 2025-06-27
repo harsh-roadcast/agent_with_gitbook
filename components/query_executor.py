@@ -1,11 +1,12 @@
 """Query execution implementation using DSPy agents."""
 import json
 import logging
-import dspy
-from typing import Dict, Any, List
+from typing import Any
 
-from core.interfaces import IQueryExecutor, DatabaseType, QueryResult
+import dspy
+
 from core.exceptions import QueryExecutionError, DataParsingError
+from core.interfaces import IQueryExecutor, DatabaseType, QueryResult
 from modules.signatures import EsQueryProcessor, VectorQueryProcessor
 from services.search_service import execute_query, execute_vector_query
 from util.performance import monitor_performance

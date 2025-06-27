@@ -1,15 +1,14 @@
 """Tests for the component implementations."""
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
-import json
-import asyncio
+from unittest.mock import Mock, patch
 
-from core.interfaces import DatabaseType, QueryResult
-from core.exceptions import DatabaseSelectionError, QueryExecutionError, SummaryGenerationError, ChartGenerationError
+import pytest
+
+from components.chart_generator import DSPyChartGenerator
 from components.database_selector import DSPyDatabaseSelector
 from components.query_executor import DSPyQueryExecutor
 from components.summary_generator import DSPySummaryGenerator
-from components.chart_generator import DSPyChartGenerator
+from core.exceptions import DatabaseSelectionError, QueryExecutionError, SummaryGenerationError, ChartGenerationError
+from core.interfaces import DatabaseType, QueryResult
 
 
 class TestDSPyDatabaseSelector:

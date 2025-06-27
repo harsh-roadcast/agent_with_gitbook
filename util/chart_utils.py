@@ -146,24 +146,38 @@ def generate_chart_from_config(chart_config: Dict) -> str:
     Returns:
     - HTML string with embedded chart
     """
-    html_template = chart_config.get("html_template", "")
+    try:
+        # Remove any html_template key if it exists since we're generating our own
+        clean_config = {k: v for k, v in chart_config.items() if k != 'html_template'}
 
-    # If no template provided, use a default one
-    if not html_template:
-        return f"""
-<!DOCTYPE html>
+        # Serialize the config to JSON with proper escaping
+        config_json = json.dumps(clean_config, ensure_ascii=False, separators=(',', ':'))
+
+        # Generate the HTML template with the properly serialized JSON
+        html = f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>Data Visualization</title>
-    <script src="https://code.highcharts.com/highcharts.js"></script>
+<title>Data Visualization</title>
+<script src="https://code.highcharts.com/highcharts.js"></script>
 </head>
 <body>
 <div id="container" style="width: 100%; height: 400px;"></div>
 <script>
-Highcharts.chart('container', {json.dumps(chart_config)});
+Highcharts.chart('container', {config_json});
 </script>
 </body>
-</html>
-"""
+</html>"""
 
-    return html_template.format(chart_config=json.dumps(chart_config))
+        return html
+
+    except Exception as e:
+        logger.error(f"Error generating chart HTML: {e}")
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+<title>Chart Error</title>
+</head>
+<body>
+<div>Error generating chart: {str(e)}</div>
+</body>
+</html>"""

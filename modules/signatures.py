@@ -1,5 +1,7 @@
 from typing import List, Dict, Optional, Literal
+
 import dspy
+
 
 class DatabaseSelectionSignature(dspy.Signature):
     """
@@ -13,7 +15,7 @@ class DatabaseSelectionSignature(dspy.Signature):
 class EsQueryProcessor(dspy.Signature):
     """
     Signature for processing Elasticsearch queries based on user input
-     and schema and generate query with top 10 rows and get only relevant fields not all fields.
+     and schema and generate query with max 25 rows and get only relevant fields not all fields.
     """
     user_query: str = dspy.InputField(desc="User's question")
     es_schema: str = dspy.InputField(desc="Elastic schema")
