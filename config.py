@@ -5,56 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings:
-    # Fabric database settings
-    FABRIC_SERVER = os.getenv("FABRIC_SERVER", "")
-    FABRIC_DATABASE = os.getenv("FABRIC_DATABASE", "")
-    FABRIC_CLIENT_ID = os.getenv("FABRIC_CLIENT_ID", "")
-    FABRIC_CLIENT_SECRET = os.getenv("FABRIC_CLIENT_SECRET", "")
-    FABRIC_TENANT_ID = os.getenv("FABRIC_TENANT_ID", "")
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-
-    # Database Schema
-    DATABASE_SCHEMA = """
-    You're working with the following Microsoft Fabric SQL Server tables:
-
-    1. f_invdata_with_code: Invoice data for projects across divisions
-       - Key columns: invdatakey (PK), date, client, project_code, project_description, 
-         region, country, division, budget_account_code, resource_name, invoice_amount_in_base_currency
-       - Additional: client_code, entity, budget_account_description, sale_type, contract_type,
-         emp_id, invoice_amount_in_tran_currency, currency, exchange_rate, _etldate, voucher_,
-         etlactiveind, etljobname, envsourcecd, datasourcecd, etlcreateddatetime, etlupdateddatetime
-
-    2. f_budgetdata_with_code: Budget allocations by division and category
-       - Key columns: budgetdatakey (PK), dateperiod, division, budget_account_code, 
-         budget_ledger_name, category, amount_in_usd, amount_in_inr
-       - Additional: oh_type, conversion_rate, _etldate, etlactiveind, etljobname,
-         envsourcecd, datasourcecd, etlcreateddatetime, etlupdateddatetime
-
-    Relationships:
-    - Join tables using budget_account_code only if required
-    - Both tables have division column for filtering/grouping
-
-    Notes:
-    - Use LOWER() for case-insensitive string matches
-    - Use LIKE with % for partial matches
-    - current_date function not available
-    """
-
-    SQL_INSTRUCTIONS = """ Generate and execute T-SQL queries compatible with Microsoft Fabric SQL Warehouse. 
-        Assume tables are accessed via ODBC and data is stored in Delta Lake format. 
-        Use only supported features: SELECT, JOIN, GROUP BY, ORDER BY, CTEs, and WHERE clauses. 
-        Avoid using stored procedures, variables, procedural blocks (BEGIN...END), or dynamic SQL. 
-        For pagination, use OFFSET ... FETCH NEXT syntax. Always include an ORDER BY clause. Example: 
-        'ORDER BY column OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY'. 
-        Do not use LIMIT, as it is not supported in T-SQL. 
-        For string matching: 
-        1. Use LOWER() on both column and input for case-insensitive comparisons. 
-        2. Use LIKE with % wildcards for partial matches. 
-        3. Convert spaces in user input to % for fuzzy matching (e.g., 'E commerce' → LOWER(column) LIKE '%e%commerce%'). 
-        4. Do not normalize, correct spelling, or change punctuation in user input (e.g., hyphens, quotes). 
-        When generating the SQL query string, use alias for every column in the SELECT statement. 
-        Do not include newline characters or unescaped quotes that could break JSON parsing. 
-        Prefer single-line SQL strings do not use multi-line strings and do not format the answer give plain string without any formatting. """
 
 
     ES_SCHEMA = """

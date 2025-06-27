@@ -149,7 +149,6 @@ class ActionDecider(dspy.Module):
         try:
             database = self.predictor(
                 user_query=user_query,
-                database_schema=settings.DATABASE_SCHEMA,
                 es_schema=settings.ES_SCHEMA
             ).database
             logger.info(f"Selected database: {database}")
