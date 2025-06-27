@@ -18,7 +18,7 @@ def init_llm(model_name: str):
             logger.warning("No OpenAI API key found in configuration")
             return None
 
-        local_llm = dspy.LM(model='openai/gpt-4o-mini', api_key=api_key)
+        local_llm = dspy.LM(model='openai/gpt-4.1-mini', api_key=api_key)
         dspy.settings.configure(lm=local_llm)
         #TODO: Configure custom cache using redis
         dspy.configure_cache(enable_disk_cache=True, enable_memory_cache=True)

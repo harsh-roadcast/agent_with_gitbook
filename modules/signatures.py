@@ -5,34 +5,48 @@ import dspy
 
 class DatabaseSelectionSignature(dspy.Signature):
     """
-    Signature for selecting the appropriate query based on user query and schemas whether normal elastic query will work for available indexes or vector search is required.
+    Signature for selecting the appropriate query based on user query, schemas, and conversation context.
+    Considers previous queries and results to make better database selection decisions.
 
     """
     user_query: str = dspy.InputField(desc="User's question")
     es_schema: str = dspy.InputField(desc="Elastic schema")
+    conversation_history: Optional[List[Dict]] = dspy.InputField(
+        desc="Previous conversation messages for context",
+        default=None
+    )
     database: Literal['Vector', 'Elastic'] = dspy.OutputField(desc="Selected database for query execution (Vector or Elastic)")
 
 class EsQueryProcessor(dspy.Signature):
     """
-    Signature for processing Elasticsearch queries based on user input
-     and schema and generate query with max 25 rows and get only relevant fields not all fields.
+    Signature for processing Elasticsearch queries based on user input, schema, and conversation history.
+    Uses previous context to provide more relevant queries and handle follow-up questions.
     """
     user_query: str = dspy.InputField(desc="User's question")
     es_schema: str = dspy.InputField(desc="Elastic schema")
-    elastic_query: dict = dspy.OutputField(desc="Generated Elastic query with only top 10 rows and relevant fields")
-    data_json: str = dspy.OutputField(desc="Raw results as JSON")
+    conversation_history: Optional[List[Dict]] = dspy.InputField(
+        desc="Previous conversation messages for context",
+        default=None
+    )
     es_instructions = dspy.InputField(desc="Elasticsearch query instructions")
+    elastic_query: dict = dspy.OutputField(desc="Generated Elastic query with only top 25 rows and relevant fields")
+    data_json: str = dspy.OutputField(desc="Raw results as JSON")
 
 
 class VectorQueryProcessor(dspy.Signature):
     """"
-    Signature for processing SQL queries based on user input and schema. generates SQL query and retrieves results by calling function.
+    Signature for processing vector search queries based on user input, schema, and conversation history.
+    Uses previous context to provide more relevant searches and handle follow-up questions.
     """
 
     user_query: str = dspy.InputField(desc="User's question")
     es_schema: str = dspy.InputField(desc="Elastic schema")
+    conversation_history: Optional[List[Dict]] = dspy.InputField(
+        desc="Previous conversation messages for context",
+        default=None
+    )
     es_instructions = dspy.InputField(desc="Elasticsearch query instructions")
-    elastic_query: dict = dspy.OutputField(desc="Generated Elastic query with only top 10 rows and relevant fields")
+    elastic_query: dict = dspy.OutputField(desc="Generated vector search query with only top 25 rows and relevant fields")
     data_json: str = dspy.OutputField(desc="Raw results as JSON")
 
 class SummarySignature(dspy.Signature):
