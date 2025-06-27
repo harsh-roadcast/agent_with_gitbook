@@ -24,13 +24,14 @@ class DSPyChartGenerator(IChartGenerator):
         self.default_chart_type = default_chart_type
 
     @monitor_performance("chart_generation")
-    def generate_chart(self, data: Dict, user_query: str) -> Tuple[Optional[Dict], Optional[str]]:
+    def generate_chart(self, data: Dict, user_query: str, conversation_history: Optional[List[Dict]] = None) -> Tuple[Optional[Dict], Optional[str]]:
         """
         Generate chart configuration and HTML.
 
         Args:
             data: Parsed JSON data from query results
             user_query: The user's query string
+            conversation_history: Optional conversation history for context
 
         Returns:
             Tuple of (chart_config, chart_html) or (None, None) if generation fails
@@ -50,8 +51,9 @@ class DSPyChartGenerator(IChartGenerator):
 
             # Use DSPy to determine best chart configuration
             result = self.chart_selector(
-                json_data=json.dumps(chart_data[:10]),  # Limit to first 10 items for analysis
-                user_query=user_query
+                json_data=json.dumps(chart_data),
+                user_query=user_query,
+                conversation_history=conversation_history
             )
 
             # Build the actual chart config with real data
@@ -232,13 +234,14 @@ class DSPyChartGenerator(IChartGenerator):
         return x_column, y_column
 
     @monitor_performance("chart_generation_async")
-    async def generate_chart_async(self, data: Dict, user_query: str) -> Tuple[Optional[Dict], Optional[str]]:
+    async def generate_chart_async(self, data: Dict, user_query: str, conversation_history: Optional[List[Dict]] = None) -> Tuple[Optional[Dict], Optional[str]]:
         """
         Asynchronously generate chart configuration and HTML.
 
         Args:
             data: Parsed JSON data from query results
             user_query: The user's query string
+            conversation_history: Optional conversation history for context
 
         Returns:
             Tuple of (chart_config, chart_html) or (None, None) if generation fails
@@ -250,7 +253,7 @@ class DSPyChartGenerator(IChartGenerator):
             logger.info(f"Generating chart asynchronously for query: {user_query}")
 
             # Use asyncio.to_thread for CPU-bound operations
-            return await asyncio.to_thread(self.generate_chart, data, user_query)
+            return await asyncio.to_thread(self.generate_chart, data, user_query, conversation_history)
 
         except Exception as e:
             logger.error(f"Error generating chart asynchronously: {e}", exc_info=True)

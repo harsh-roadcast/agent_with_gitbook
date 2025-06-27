@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Any, Optional, Tuple, AsyncGenerator, Union
+from typing import Dict, Any, Optional, Tuple, AsyncGenerator, Union, List
 
 from core.interfaces import IResultProcessor, ISummaryGenerator, IChartGenerator, QueryResult, ProcessedResult
 from util.performance import monitor_performance
@@ -32,6 +32,9 @@ class ResultProcessor(IResultProcessor):
             ProcessedResult with all components
         """
         try:
+            # Parse conversation history if provided
+            parsed_history = self._parse_conversation_history(conversation_history)
+
             # Generate summary
             summary = None
             if query_result.raw_result:
@@ -47,7 +50,7 @@ class ResultProcessor(IResultProcessor):
             if query_result.raw_result:
                 try:
                     chart_config, chart_html = self.chart_generator.generate_chart(
-                        query_result.raw_result, user_query
+                        query_result.raw_result, user_query, parsed_history
                     )
                 except Exception as e:
                     logger.warning(f"Chart generation failed: {e}")
@@ -95,7 +98,7 @@ class ResultProcessor(IResultProcessor):
                     self._generate_summary_safe(user_query, query_result.raw_result, conversation_history)
                 )
                 chart_task = asyncio.create_task(
-                    self._generate_chart_safe(query_result.raw_result, user_query)
+                    self._generate_chart_safe(query_result.raw_result, user_query, conversation_history)
                 )
 
                 # Yield results as they become available
@@ -121,10 +124,12 @@ class ResultProcessor(IResultProcessor):
             logger.warning(f"Summary generation failed: {e}")
             return None
 
-    async def _generate_chart_safe(self, data: Dict, user_query: str) -> Tuple[Optional[Dict], Optional[str]]:
+    async def _generate_chart_safe(self, data: Dict, user_query: str, conversation_history: Optional[str] = None) -> Tuple[Optional[Dict], Optional[str]]:
         """Safely generate chart with error handling."""
         try:
-            return await self.chart_generator.generate_chart_async(data, user_query)
+            # Parse conversation history for chart generation
+            parsed_history = self._parse_conversation_history(conversation_history)
+            return await self.chart_generator.generate_chart_async(data, user_query, parsed_history)
         except Exception as e:
             logger.warning(f"Chart generation failed: {e}")
             return None, None
@@ -141,3 +146,21 @@ class ResultProcessor(IResultProcessor):
         except Exception as e:
             logger.error(f"Error formatting elastic query: {e}")
             return f"```\n{str(elastic_query)}\n```"
+
+    def _parse_conversation_history(self, conversation_history: Optional[str]) -> Optional[List[Dict]]:
+        """Parse conversation history string to list of dictionaries."""
+        if not conversation_history:
+            return None
+
+        try:
+            # If it's already a string that looks like JSON, parse it
+            if isinstance(conversation_history, str):
+                return json.loads(conversation_history)
+            # If it's already a list, return as is
+            elif isinstance(conversation_history, list):
+                return conversation_history
+            else:
+                return None
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"Failed to parse conversation history: {conversation_history}")
+            return None

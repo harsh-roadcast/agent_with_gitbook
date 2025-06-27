@@ -84,7 +84,7 @@ class TestInterfaceContracts:
 
         result = selector.select_database("test query", "schema")
         assert result == DatabaseType.VECTOR
-        selector.select_database.assert_called_once_with("test query", "schema")
+        selector.select_database.assert_called_once_with("test query", "schema", None)
 
     def test_query_executor_interface(self):
         """Test IQueryExecutor interface."""

@@ -34,7 +34,7 @@ class IDatabaseSelector(ABC):
     """Interface for database selection logic."""
 
     @abstractmethod
-    def select_database(self, user_query: str, schema: str) -> DatabaseType:
+    def select_database(self, user_query: str, schema: str, conversation_history: Optional[List[Dict]] = None) -> DatabaseType:
         """Select appropriate database based on query and schema."""
         pass
 
@@ -43,7 +43,7 @@ class IQueryExecutor(ABC):
     """Interface for query execution."""
 
     @abstractmethod
-    def execute_query(self, database_type: DatabaseType, user_query: str, schema: str, instructions: str) -> QueryResult:
+    def execute_query(self, database_type: DatabaseType, user_query: str, schema: str, instructions: str, conversation_history: Optional[List[Dict]] = None) -> QueryResult:
         """Execute query on specified database."""
         pass
 
@@ -66,12 +66,12 @@ class IChartGenerator(ABC):
     """Interface for chart generation."""
 
     @abstractmethod
-    def generate_chart(self, data: Dict, user_query: str) -> Tuple[Optional[Dict], Optional[str]]:
+    def generate_chart(self, data: Dict, user_query: str, conversation_history: Optional[List[Dict]] = None) -> Tuple[Optional[Dict], Optional[str]]:
         """Generate chart configuration and HTML."""
         pass
 
     @abstractmethod
-    async def generate_chart_async(self, data: Dict, user_query: str) -> Tuple[Optional[Dict], Optional[str]]:
+    async def generate_chart_async(self, data: Dict, user_query: str, conversation_history: Optional[List[Dict]] = None) -> Tuple[Optional[Dict], Optional[str]]:
         """Generate chart asynchronously."""
         pass
 

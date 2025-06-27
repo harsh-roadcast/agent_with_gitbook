@@ -1,5 +1,6 @@
 """Database selection implementation using DSPy."""
 import logging
+from typing import Optional, List, Dict
 
 import dspy
 
@@ -19,13 +20,14 @@ class DSPyDatabaseSelector(IDatabaseSelector):
         self.predictor = dspy.Predict(DatabaseSelectionSignature)
 
     @monitor_performance("database_selection")
-    def select_database(self, user_query: str, schema: str) -> DatabaseType:
+    def select_database(self, user_query: str, schema: str, conversation_history: Optional[List[Dict]] = None) -> DatabaseType:
         """
         Select the appropriate database based on the user query and schema.
 
         Args:
             user_query: The user's query string
             schema: The database schema information
+            conversation_history: Optional conversation history for context
 
         Returns:
             DatabaseType enum value
@@ -36,7 +38,8 @@ class DSPyDatabaseSelector(IDatabaseSelector):
         try:
             result = self.predictor(
                 user_query=user_query,
-                es_schema=schema
+                es_schema=schema,
+                conversation_history=conversation_history
             )
 
             database_str = result.database

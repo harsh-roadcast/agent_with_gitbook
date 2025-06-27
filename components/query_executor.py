@@ -1,7 +1,7 @@
 """Query execution implementation using DSPy agents."""
 import json
 import logging
-from typing import Any
+from typing import Any, Optional, List, Dict
 
 import dspy
 
@@ -23,7 +23,7 @@ class DSPyQueryExecutor(IQueryExecutor):
         self.es_agent = dspy.ReAct(EsQueryProcessor, tools=[execute_query])
 
     @monitor_performance("query_execution")
-    def execute_query(self, database_type: DatabaseType, user_query: str, schema: str, instructions: str) -> QueryResult:
+    def execute_query(self, database_type: DatabaseType, user_query: str, schema: str, instructions: str, conversation_history: Optional[List[Dict]] = None) -> QueryResult:
         """
         Execute query on the specified database.
 
@@ -32,6 +32,7 @@ class DSPyQueryExecutor(IQueryExecutor):
             user_query: The user's query string
             schema: Database schema information
             instructions: Query execution instructions
+            conversation_history: Optional conversation history for context
 
         Returns:
             QueryResult with parsed data and metadata
@@ -41,9 +42,9 @@ class DSPyQueryExecutor(IQueryExecutor):
         """
         try:
             if database_type == DatabaseType.VECTOR:
-                return self._execute_vector_query(user_query, schema, instructions)
+                return self._execute_vector_query(user_query, schema, instructions, conversation_history)
             elif database_type == DatabaseType.ELASTIC:
-                return self._execute_elastic_query(user_query, schema, instructions)
+                return self._execute_elastic_query(user_query, schema, instructions, conversation_history)
             else:
                 raise QueryExecutionError(f"Unsupported database type: {database_type}")
 
@@ -51,26 +52,28 @@ class DSPyQueryExecutor(IQueryExecutor):
             logger.error(f"Error executing query on {database_type}: {e}", exc_info=True)
             raise QueryExecutionError(f"Failed to execute query: {e}") from e
 
-    def _execute_vector_query(self, user_query: str, schema: str, instructions: str) -> QueryResult:
+    def _execute_vector_query(self, user_query: str, schema: str, instructions: str, conversation_history: Optional[List[Dict]] = None) -> QueryResult:
         """Execute vector search query."""
         logger.info(f"Processing Vector query for: {user_query}")
 
         result = self.vector_agent(
             user_query=user_query,
             es_schema=schema,
-            es_instructions=instructions
+            es_instructions=instructions,
+            conversation_history=conversation_history
         )
 
         return self._parse_query_result(result, DatabaseType.VECTOR)
 
-    def _execute_elastic_query(self, user_query: str, schema: str, instructions: str) -> QueryResult:
+    def _execute_elastic_query(self, user_query: str, schema: str, instructions: str, conversation_history: Optional[List[Dict]] = None) -> QueryResult:
         """Execute Elasticsearch query."""
         logger.info(f"Processing Elasticsearch query for: {user_query}")
 
         result = self.es_agent(
             user_query=user_query,
             es_schema=schema,
-            es_instructions=instructions
+            es_instructions=instructions,
+            conversation_history=conversation_history
         )
 
         return self._parse_query_result(result, DatabaseType.ELASTIC)
