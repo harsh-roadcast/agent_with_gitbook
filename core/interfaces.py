@@ -85,7 +85,7 @@ class IResultProcessor(ABC):
         pass
 
     @abstractmethod
-    async def process_results_async(self, query_result: QueryResult, user_query: str, conversation_history: Optional[str] = None) -> AsyncGenerator[Tuple[str, Any], None]:
+    def process_results_async(self, query_result: QueryResult, user_query: str, conversation_history: Optional[str] = None) -> AsyncGenerator[Tuple[str, Any], None]:
         """Process results asynchronously, yielding intermediate results."""
         pass
 
