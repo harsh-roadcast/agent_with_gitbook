@@ -251,7 +251,7 @@ payload = {
     "roles": ["admin"],
     "permissions": ["read", "write"],
     "iat": datetime.now(tz=timezone.utc).timestamp(),
-    "exp": (datetime.now(tz=timezone.utc) + timedelta(hours=1)).timestamp()
+    "exp": (datetime.now(tz=timezone.utc) + timedelta(hours=1000)).timestamp()
 }
 
 token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)

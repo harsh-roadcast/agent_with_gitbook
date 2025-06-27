@@ -63,13 +63,28 @@ def execute_query(es_query: dict) -> dict:
         Dictionary with the query results
     """
     logger.info(f"Executing standard ES query: {es_query}")
+
+    # Validate that we have a proper ES query
+    if not es_query or not isinstance(es_query, dict):
+        error_msg = "Invalid or missing Elasticsearch query - cannot proceed"
+        logger.error(error_msg)
+        return {"error": error_msg, "query_type": "standard", "stop_processing": True}
+
+    # Validate that query body is properly structured
+    if 'body' not in es_query or not es_query.get('body'):
+        error_msg = "Elasticsearch query body not generated or is empty - cannot proceed"
+        logger.error(error_msg)
+        return {"error": error_msg, "query_type": "standard", "stop_processing": True}
+
     es = get_es_client()
     try:
         index = es_query.get('index')
         body = es_query.get('body', {})
 
         if not index:
-            return {"error": "Missing 'index' in query.", "vehicles": []}
+            error_msg = "Missing 'index' in Elasticsearch query - cannot proceed"
+            logger.error(error_msg)
+            return {"error": error_msg, "query_type": "standard", "stop_processing": True}
 
         # Extract size from body if it exists to avoid parameter conflict
         size = None
@@ -79,22 +94,27 @@ def execute_query(es_query: dict) -> dict:
             size = es_query.get('size', 10)
 
         # Execute with a timeout to prevent hanging
-        # Pass size as named parameter only if it's not None and not in body
         if size is not None:
             result = es.search(index=index, body=body, size=size, request_timeout=30)
         else:
             result = es.search(index=index, body=body, request_timeout=30)
 
         # Check if the result actually contains data
-        if result.get('hits', {}).get('total', {}).get('value', 0) == 0 and 'aggregations' not in result:
-            logger.warning(f"ES query returned no results for index {index}")
-            # Return empty results in expected format to prevent retries
-            return {"success": True, "result": result, "query_type": "standard", "vehicles": []}
+        total_hits = result.get('hits', {}).get('total', {}).get('value', 0)
+        has_aggregations = 'aggregations' in result
 
+        if total_hits == 0 and not has_aggregations:
+            error_msg = f"Elasticsearch query returned 0 results for index {index} - cannot proceed"
+            logger.error(error_msg)
+            return {"error": error_msg, "query_type": "standard", "stop_processing": True}
+
+        logger.info(f"ES query successful - found {total_hits} results")
         return {"success": True, "result": result, "query_type": "standard"}
+
     except Exception as e:
-        logger.error(f"ES query execution failed: {e}")
-        return {"error": str(e), "query_type": "standard", "vehicles": []}
+        error_msg = f"Elasticsearch query execution failed: {str(e)} - cannot proceed"
+        logger.error(error_msg)
+        return {"error": error_msg, "query_type": "standard", "stop_processing": True}
 
 
 def generate_embedding(text: str) -> List[float]:
@@ -128,6 +148,13 @@ def execute_vector_query(es_query: dict) -> dict:
         Dictionary with the query results
     """
     logger.info(f"Executing vector search ES query: {es_query}")
+
+    # Validate that we have a proper vector query
+    if not es_query or not isinstance(es_query, dict):
+        error_msg = "Invalid or missing vector search query - cannot proceed"
+        logger.error(error_msg)
+        return {"error": error_msg, "query_type": "vector", "stop_processing": True}
+
     es = get_es_client()
     try:
         index = es_query.get('index')
@@ -136,13 +163,22 @@ def execute_vector_query(es_query: dict) -> dict:
         field_name = es_query.get('embedding_field', 'embedding')
 
         if not index:
-            return {"error": "Missing 'index' in query.", "vehicles": []}
+            error_msg = "Missing 'index' in vector search query - cannot proceed"
+            logger.error(error_msg)
+            return {"error": error_msg, "query_type": "vector", "stop_processing": True}
 
         if not query_text:
-            return {"error": "Missing 'query_text' for vector search.", "vehicles": []}
+            error_msg = "Missing 'query_text' for vector search - cannot proceed"
+            logger.error(error_msg)
+            return {"error": error_msg, "query_type": "vector", "stop_processing": True}
 
         # Generate embedding from the query text
-        embedding = generate_embedding(query_text)
+        try:
+            embedding = generate_embedding(query_text)
+        except Exception as e:
+            error_msg = f"Failed to generate embedding for vector search: {str(e)} - cannot proceed"
+            logger.error(error_msg)
+            return {"error": error_msg, "query_type": "vector", "stop_processing": True}
 
         # Build cosine similarity query
         vector_query = {
@@ -173,12 +209,16 @@ def execute_vector_query(es_query: dict) -> dict:
         result = es.search(index=index, body=vector_query, request_timeout=30)
 
         # Check if the result actually contains data
-        if result.get('hits', {}).get('total', {}).get('value', 0) == 0:
-            logger.warning(f"Vector search ES query returned no results for index {index}")
-            # Return empty results in expected format to prevent retries
-            return {"success": True, "result": result, "query_type": "vector", "vehicles": []}
+        total_hits = result.get('hits', {}).get('total', {}).get('value', 0)
+        if total_hits == 0:
+            error_msg = f"Vector search returned 0 results for index {index} - cannot proceed"
+            logger.error(error_msg)
+            return {"error": error_msg, "query_type": "vector", "stop_processing": True}
 
+        logger.info(f"Vector search successful - found {total_hits} results")
         return {"success": True, "result": result, "query_type": "vector"}
+
     except Exception as e:
-        logger.error(f"Vector search ES query execution failed: {e}")
-        return {"error": str(e), "query_type": "vector", "vehicles": []}
+        error_msg = f"Vector search execution failed: {str(e)} - cannot proceed"
+        logger.error(error_msg)
+        return {"error": error_msg, "query_type": "vector", "stop_processing": True}
