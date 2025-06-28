@@ -86,18 +86,16 @@ def execute_query(es_query: dict) -> dict:
             logger.error(error_msg)
             return {"error": error_msg, "query_type": "standard", "stop_processing": True}
 
-        # Extract size from body if it exists to avoid parameter conflict
-        size = None
+        # ENFORCE MAXIMUM 25 RESULTS - Remove any size parameters and force to 25
         if 'size' in body:
-            size = body.pop('size')  # Remove size from body
-        elif 'size' in es_query:
-            size = es_query.get('size', 10)
+            body.pop('size')  # Remove size from body
 
-        # Execute with a timeout to prevent hanging
-        if size is not None:
-            result = es.search(index=index, body=body, size=size, request_timeout=30)
-        else:
-            result = es.search(index=index, body=body, request_timeout=30)
+        # Force maximum size to 25, no matter what was requested
+        max_size = 25
+        logger.info(f"Enforcing maximum result limit of {max_size} records")
+
+        # Execute with enforced size limit and timeout
+        result = es.search(index=index, body=body, size=max_size, request_timeout=30)
 
         # Check if the result actually contains data
         total_hits = result.get('hits', {}).get('total', {}).get('value', 0)
@@ -159,7 +157,6 @@ def execute_vector_query(es_query: dict) -> dict:
     try:
         index = es_query.get('index')
         query_text = es_query.get('query_text', '')
-        size = es_query.get('size', 10)
         field_name = es_query.get('embedding_field', 'embedding')
 
         if not index:
@@ -180,9 +177,13 @@ def execute_vector_query(es_query: dict) -> dict:
             logger.error(error_msg)
             return {"error": error_msg, "query_type": "vector", "stop_processing": True}
 
-        # Build cosine similarity query
+        # ENFORCE MAXIMUM 25 RESULTS - Force maximum size to 25, no matter what was requested
+        max_size = 25
+        logger.info(f"Enforcing maximum result limit of {max_size} records for vector search")
+
+        # Build cosine similarity query with enforced size limit
         vector_query = {
-            "size": size,
+            "size": max_size,
             "query": {
                 "script_score": {
                     "query": {"match_all": {}},
@@ -222,3 +223,90 @@ def execute_vector_query(es_query: dict) -> dict:
         error_msg = f"Vector search execution failed: {str(e)} - cannot proceed"
         logger.error(error_msg)
         return {"error": error_msg, "query_type": "vector", "stop_processing": True}
+
+
+def convert_json_to_markdown(data: dict, title: str = "Query Results") -> str:
+    """
+    Convert Elasticsearch JSON query results to markdown formatted table.
+
+    This function is designed to be called by LLM agents to format raw Elasticsearch
+    query results into human-readable markdown tables with proper formatting.
+
+    Args:
+        data (dict): Elasticsearch query result dictionary containing 'hits' structure
+        title (str, optional): Title for the markdown output. Defaults to "Query Results"
+
+    Returns:
+        str: Formatted markdown string with table headers, data rows, and summary statistics
+
+    Example:
+        >>> es_result = {"hits": {"hits": [{"_source": {"name": "John", "age": 30}}], "total": {"value": 1}}}
+        >>> markdown = convert_json_to_markdown(es_result, "User Data")
+        >>> print(markdown)
+        # User Data
+
+        | age | name |
+        | --- | --- |
+        | 30 | John |
+
+        **Total Results**: 1 records found
+        **Displayed**: 1 records
+
+    Note:
+        - Automatically extracts all unique fields from document sources
+        - Escapes markdown special characters in data values
+        - Provides summary statistics including total and displayed record counts
+        - Returns "No results found" message for empty datasets
+    """
+    if not data or not isinstance(data, dict):
+        return f"# {title}\n\nInvalid data format provided."
+
+    if 'hits' not in data:
+        return f"# {title}\n\nNo results found - missing 'hits' structure."
+
+    hits = data['hits']['hits']
+    if not hits:
+        return f"# {title}\n\nNo results found."
+
+    # Extract all unique fields from all documents
+    all_fields = set()
+    for hit in hits:
+        source = hit.get('_source', {})
+        all_fields.update(source.keys())
+
+    all_fields = sorted(list(all_fields))
+
+    # Create markdown table
+    markdown = f"# {title}\n\n"
+
+    if all_fields:
+        # Create table header
+        header = "| " + " | ".join(all_fields) + " |"
+        separator = "| " + " | ".join(["---"] * len(all_fields)) + " |"
+
+        markdown += header + "\n" + separator + "\n"
+
+        # Add data rows
+        for hit in hits:
+            source = hit.get('_source', {})
+            row_data = []
+            for field in all_fields:
+                value = source.get(field, "")
+                # Convert to string and escape markdown special characters
+                str_value = str(value).replace("|", "\\|").replace("\n", " ")
+                row_data.append(str_value)
+
+            row = "| " + " | ".join(row_data) + " |"
+            markdown += row + "\n"
+
+    # Add summary
+    total_hits = data['hits']['total']
+    if isinstance(total_hits, dict):
+        total_count = total_hits.get('value', 0)
+    else:
+        total_count = total_hits
+
+    markdown += f"\n**Total Results**: {total_count} records found\n"
+    markdown += f"**Displayed**: {len(hits)} records\n"
+
+    return markdown

@@ -3,6 +3,56 @@ from typing import List, Dict, Optional, Literal
 import dspy
 
 
+class QueryWorkflowPlanner(dspy.Signature):
+    """
+    Signature for planning the workflow of signatures to execute based on user query.
+    Determines the sequence of steps needed to fulfill the user's request, including:
+    - Data retrieval from databases
+    - Summary generation (ALWAYS included for all queries)
+    - Chart/visualization creation (ONLY if explicitly requested by user)
+    - Query modifications
+    - Follow-up visualization requests (reuse previous data)
+
+    IMPORTANT: SummarySignature is ALWAYS included in the workflow for every query.
+    IMPORTANT: Only include ChartAxisSelector if user explicitly asks for chart, graph, visualization, or plot.
+    IMPORTANT: For follow-up visualization requests (e.g., "show in bar graph" after a data query),
+               only use ChartAxisSelector and SummarySignature - do NOT re-execute data queries.
+    Default behavior should be to return data with summary, unless user specifically requests charts.
+
+    AVAILABLE SIGNATURE NAMES (use exactly these names):
+    - DatabaseSelectionSignature: Select database type (Vector or Elastic)
+    - EsQueryProcessor: Execute Elasticsearch queries
+    - VectorQueryProcessor: Execute vector search queries
+    - SummarySignature: Generate summaries (ALWAYS included)
+    - ChartAxisSelector: Create charts/visualizations (only if explicitly requested)
+
+    This signature acts as the orchestrator that guides the query agent on which
+    signatures to call and in what order.
+    """
+    user_query: str = dspy.InputField(desc="User's question or request")
+    conversation_history: Optional[List[Dict]] = dspy.InputField(
+        desc="Previous conversation messages for context",
+        default=None
+    )
+
+    # Output fields defining the workflow
+    workflow_steps: List[str] = dspy.OutputField(
+        desc="Ordered list of EXACT signature names to execute. MUST use these exact names: 'DatabaseSelectionSignature', 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartAxisSelector'. SummarySignature MUST ALWAYS be included for every query. For follow-up visualization requests that reference previous data (e.g., 'show in bar graph' after data was already retrieved), use ONLY: ['ChartAxisSelector', 'SummarySignature']. For new data queries use: ['DatabaseSelectionSignature', 'EsQueryProcessor', 'SummarySignature'] or ['DatabaseSelectionSignature', 'VectorQueryProcessor', 'SummarySignature']."
+    )
+    requires_data_retrieval: bool = dspy.OutputField(desc="Whether the query requires fetching NEW data from a database (False for follow-up visualization requests)")
+    requires_summary: bool = dspy.OutputField(desc="Always True - summary is always generated for every query")
+    requires_visualization: bool = dspy.OutputField(desc="Whether the user explicitly asked for a chart, graph, visualization, or plot in their query")
+    is_modification_request: bool = dspy.OutputField(desc="Whether this is a request to modify a previous query")
+    is_followup_visualization: bool = dspy.OutputField(desc="Whether this is a follow-up request to visualize previously retrieved data (e.g., 'show in bar graph' after data query)")
+    modification_type: Optional[Literal['query_change', 'new_chart', 'chart_modification', 'followup_visualization']] = dspy.OutputField(
+        desc="Type of modification if this is a modification request. Use 'followup_visualization' for requests to visualize previous data", default=None
+    )
+    expected_final_output: Literal['data_and_summary', 'summary_and_chart', 'modified_query', 'chart_from_previous_data'] = dspy.OutputField(
+        desc="The type of final output the user expects - always includes summary, optionally includes chart. Use 'chart_from_previous_data' for follow-up visualization requests"
+    )
+    explanation: str = dspy.OutputField(desc="Brief explanation of the planned workflow and reasoning, noting whether this reuses previous data for visualization or fetches new data")
+
+
 class DatabaseSelectionSignature(dspy.Signature):
     """
     Signature for selecting the appropriate query based on user query, schemas, and conversation context.
@@ -17,14 +67,16 @@ class DatabaseSelectionSignature(dspy.Signature):
         default=None
     )
     database: Literal['Vector', 'Elastic'] = dspy.OutputField(desc="Selected database for query execution (Vector or Elastic)")
-    is_followup_query: bool = dspy.OutputField(desc="Whether this query references previous conversation context and should be handled as a follow-up")
-    followup_action: Optional[Literal['visualization', 'reuse_data', 'modify_query']] = dspy.OutputField(desc="Type of follow-up action if this is a follow-up query", default=None)
+
 
 class EsQueryProcessor(dspy.Signature):
     """
     Signature for processing Elasticsearch queries based on user input, schema, and conversation history.
     Uses previous context to provide more relevant queries and handle follow-up questions.
-    If user is asking something about previous query results, reuses the previous elastic query.
+    If user is asking something about previous query results, reuses the previous elastic query. Max size of results is 25 rows.
+
+    This signature uses ReAct pattern to enable function calling for data retrieval.
+    Results are formatted in markdown for better readability.
     """
     user_query: str = dspy.InputField(desc="User's question")
     es_schema: str = dspy.InputField(desc="Elastic schema")
@@ -34,16 +86,19 @@ class EsQueryProcessor(dspy.Signature):
     )
     es_instructions = dspy.InputField(desc="Elasticsearch query instructions")
 
-    is_reusing_previous_query: bool = dspy.OutputField(desc="Whether this request should reuse a previous query instead of generating a new one")
+    # ReAct outputs for reasoning and action
+    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about what query to construct and execute")
     elastic_query: dict = dspy.OutputField(desc="Generated Elastic query with only top 25 rows and relevant fields, or reused previous query if is_reusing_previous_query is True")
-    data_json: str = dspy.OutputField(desc="Raw results as JSON")
-    reuse_reason: Optional[str] = dspy.OutputField(desc="Explanation of why previous query is being reused", default=None)
+    data_json: str = dspy.OutputField(desc="Raw results as JSON retrieved from function call")
+    data_markdown: str = dspy.OutputField(desc="Results formatted in markdown format with proper tables, headers, and structure for better readability")
 
 
 class VectorQueryProcessor(dspy.Signature):
-    """"
+    """
     Signature for processing vector search queries based on user input, schema, and conversation history.
     Uses previous context to provide more relevant searches and handle follow-up questions.
+
+    This signature uses ReAct pattern to enable function calling for data retrieval.
     """
 
     user_query: str = dspy.InputField(desc="User's question")
@@ -53,12 +108,17 @@ class VectorQueryProcessor(dspy.Signature):
         default=None
     )
     es_instructions = dspy.InputField(desc="Elasticsearch query instructions")
+
+    # ReAct outputs for reasoning and action
+    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about what vector search query to construct and execute")
     elastic_query: dict = dspy.OutputField(desc="Generated vector search query with only top 25 rows and relevant fields")
-    data_json: str = dspy.OutputField(desc="Raw results as JSON")
+    data_json: str = dspy.OutputField(desc="Raw results as JSON retrieved from function call")
+
 
 class SummarySignature(dspy.Signature):
     """
     Signature for summarizing conversation history and results.
+    Uses Chain of Thought reasoning to provide better summaries.
     """
     user_query: str = dspy.InputField(desc="User's question")
     conversation_history: Optional[List[Dict]] = dspy.InputField(
@@ -69,7 +129,11 @@ class SummarySignature(dspy.Signature):
         desc="JSON results from the query processor",
         default=""
     )
-    summary: str = dspy.OutputField(desc="Summary of the conversation")
+
+    # Chain of Thought outputs
+    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about how to summarize the data and conversation context")
+    summary: str = dspy.OutputField(desc="Summary of the conversation and results")
+
 
 class ChartAxisSelector(dspy.Signature):
     """
@@ -95,17 +159,3 @@ class ChartAxisSelector(dspy.Signature):
 
     chart_title: str = dspy.OutputField(desc="Title for the chart")
     highchart_config: dict = dspy.OutputField(desc="Configuration object for Highcharts")
-
-
-class FollowUpQueryProcessor(dspy.Signature):
-    """
-    Signature for processing follow-up queries that reference previous conversation context.
-    Determines if current query is a follow-up that needs previous data and what type of action is requested.
-    """
-    user_query: str = dspy.InputField(desc="Current user's question")
-    conversation_history: List[Dict] = dspy.InputField(desc="Previous conversation messages for context")
-
-    is_followup: bool = dspy.OutputField(desc="Whether this query is a follow-up to previous queries")
-    action_type: Literal['visualization', 'data_query', 'modification'] = dspy.OutputField(desc="Type of action requested")
-    previous_query_to_reuse: Optional[str] = dspy.OutputField(desc="Previous query to re-execute if needed", default=None)
-    visualization_type: Optional[str] = dspy.OutputField(desc="Type of visualization requested (line, bar, pie, etc.)", default=None)
