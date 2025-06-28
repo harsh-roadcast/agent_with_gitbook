@@ -1,11 +1,11 @@
 """Authentication utilities for JWT token handling."""
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from typing import Dict, Any
 
 import jwt
-from jwt.exceptions import InvalidSignatureError, ExpiredSignatureError, InvalidTokenError
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -238,21 +238,45 @@ def optional_auth(func):
 
     return wrapper
 
-import jwt
-from datetime import datetime, timedelta, timezone
 
-SECRET_KEY = "your-super-secret-jwt-key-here-change-this-in-production"
-ALGORITHM = "HS256"
+def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
+    """Create a JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=30)
 
-payload = {
-    "user_id": "12345",
-    "username": "johndoe",
-    "email": "john@example.com",
-    "roles": ["admin"],
-    "permissions": ["read", "write"],
-    "iat": datetime.now(tz=timezone.utc).timestamp(),
-    "exp": (datetime.now(tz=timezone.utc) + timedelta(hours=1000)).timestamp()
-}
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, authenticator.secret_key, algorithm=authenticator.algorithm)
+    return encoded_jwt
 
-token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-print(token)
+
+def authenticate_user(username: str, password: str) -> dict:
+    """Authenticate a user with username and password."""
+    # This is a simplified version - in production you'd check against a database
+    # For now, return a mock user if credentials are valid
+    if username == "admin" and password == "password":
+        return {
+            "id": "1",
+            "username": username,
+            "email": "admin@example.com",
+            "is_active": True
+        }
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password"
+        )
+
+
+def hash_password(password: str) -> str:
+    """Hash a password using simple encoding (for demo purposes only)."""
+    # In production, use proper bcrypt or similar
+    import hashlib
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash."""
+    return hash_password(plain_password) == hashed_password

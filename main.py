@@ -1,7 +1,8 @@
 import logging
 import pathlib
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,18 +14,30 @@ from routes import (
     elasticsearch_routes,
     conversation_routes,
     search_routes,
-    document_routes
+    document_routes,
+    bulk_index_routes
 )
 from services.llm_service import init_llm
+from services.mapping_service import initialize_index_schema
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("DSPy Agent API starting up")
+    initialize_index_schema()
+    yield
+    # Shutdown
+    logger.info("DSPy Agent API shutting down")
+
 # Initialize the FastAPI application
 app = FastAPI(
     title="DSPy Agent API",
-    description="FastAPI application with DSPy for natural language processing and JWT authentication"
+    description="FastAPI application with DSPy for natural language processing and JWT authentication",
+    lifespan=lifespan
 )
 
 # Set up static files directory
@@ -57,43 +70,12 @@ app.include_router(elasticsearch_routes.router)
 app.include_router(conversation_routes.router)
 app.include_router(search_routes.router)
 app.include_router(document_routes.router)
-
-# Legacy routes for backward compatibility
-@app.post("/v1/chat/completions")
-@app.options("/v1/chat/completions")
-async def process_query_with_deps(request: Request):
-    """Process a query with the query processor dependency injected"""
-    return await query_routes.process_query(request)
-
+app.include_router(bulk_index_routes.router)
 
 @app.get("/")
 async def root_with_static():
     """Serve the web UI with static_dir injected"""
     return await main_routes.root(static_dir=static_dir)
-
-# Add the history route
-@app.get("/history/{session_id}")
-async def history_with_deps(session_id: str):
-    """Get conversation history for a session"""
-    return await query_routes.get_history(session_id)
-
-# Add the stats route
-@app.get("/stats")
-async def stats_with_deps():
-    """Get LLM usage statistics"""
-    return await query_routes.get_llm_stats()
-
-# Startup event
-@app.on_event("startup")
-async def startup_event():
-    logger.info("DSPy Agent API starting up")
-    # Initialize any other resources here
-
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("DSPy Agent API shutting down")
-    # Clean up any resources here
 
 if __name__ == "__main__":
     import uvicorn

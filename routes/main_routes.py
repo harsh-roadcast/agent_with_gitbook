@@ -17,13 +17,9 @@ async def root(static_dir):
     if not index_path.exists():
         return {"message": "Web UI not found. Please check the 'static' directory."}
 
-    try:
-        with open(index_path) as f:
-            content = f.read()
-        return HTMLResponse(content=content)
-    except Exception as e:
-        logger.error(f"Error serving index page: {e}")
-        raise HTTPException(status_code=500, detail=f"Error serving index page: {str(e)}")
+    with open(index_path) as f:
+        content = f.read()
+    return HTMLResponse(content=content)
 
 @router.get("/hello/{name}")
 async def say_hello(name: str):

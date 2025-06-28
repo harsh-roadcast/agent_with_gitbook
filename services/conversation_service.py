@@ -1,10 +1,10 @@
 """Conversation history management service with Redis support."""
 import json
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from datetime import datetime, timedelta
 
-from util.redis_client import get_redis_client, is_redis_available, store_message_query
+from util.redis_client import redis_client, store_message_query
 
 logger = logging.getLogger(__name__)
 
@@ -13,436 +13,197 @@ class ConversationService:
     """Service to manage conversation history and context with Redis backend."""
 
     def __init__(self):
-        # Try to use Redis, fall back to in-memory if not available
-        self.redis_client = get_redis_client()
-        self.use_redis = is_redis_available()
-
-        if self.use_redis:
-            logger.info("ConversationService initialized with Redis backend")
-        else:
-            logger.warning("ConversationService falling back to in-memory storage")
-            # Fallback to in-memory storage
-            self._conversations: Dict[str, Dict] = {}
-
-        self._max_history_length = 10  # Maximum number of exchanges to keep
-        self._session_timeout = timedelta(hours=2)  # Session timeout
-        self._redis_prefix = "conversation:"  # Redis key prefix
+        self._max_history_length = 10
+        self._session_timeout = timedelta(hours=2)
+        self._redis_prefix = "conversation:"
+        logger.info("ConversationService initialized with global Redis client")
 
     def get_conversation_history(self, session_id: str) -> List[Dict[str, Any]]:
         """Get conversation history for a session."""
-        if self.use_redis:
-            return self._get_conversation_history_redis(session_id)
-        else:
-            return self._get_conversation_history_memory(session_id)
-
-    def _get_conversation_history_redis(self, session_id: str) -> List[Dict[str, Any]]:
-        """Get conversation history from Redis."""
         redis_key = f"{self._redis_prefix}{session_id}"
+        conversation_data = redis_client.hgetall(redis_key)
 
-        try:
-            # Get conversation data from Redis
-            conversation_data = self.redis_client.hgetall(redis_key)
+        if not conversation_data:
+            return []
 
-            if not conversation_data:
+        # Check if session has expired
+        last_activity_str = conversation_data.get('last_activity')
+        if last_activity_str:
+            last_activity = datetime.fromisoformat(last_activity_str)
+            if datetime.now() - last_activity > self._session_timeout:
+                self.clear_conversation(session_id)
                 return []
 
-            # Check if session has expired
-            last_activity_str = conversation_data.get('last_activity')
-            if last_activity_str:
-                last_activity = datetime.fromisoformat(last_activity_str)
-                if self._is_session_expired_time(last_activity):
-                    self.clear_conversation(session_id)
-                    return []
+        # Get messages
+        messages = conversation_data.get('messages', [])
+        if isinstance(messages, str):
+            messages = json.loads(messages)
 
-            # Get messages
+        return messages if isinstance(messages, list) else []
+
+    def add_user_message(self, session_id: str, message: str, message_id: str) -> str:
+        """Add a user message to conversation history."""
+        redis_key = f"{self._redis_prefix}{session_id}"
+        conversation_data = redis_client.hgetall(redis_key)
+
+        if not conversation_data:
+            messages = []
+            created_at = datetime.now().isoformat()
+        else:
             messages = conversation_data.get('messages', [])
             if isinstance(messages, str):
                 messages = json.loads(messages)
-
-            return messages if isinstance(messages, list) else []
-
-        except Exception as e:
-            logger.error(f"Error getting conversation history from Redis for {session_id}: {e}")
-            return []
-
-    def _get_conversation_history_memory(self, session_id: str) -> List[Dict[str, Any]]:
-        """Get conversation history from in-memory storage."""
-        if session_id not in self._conversations:
-            return []
-
-        conversation = self._conversations[session_id]
-
-        # Check if session has expired
-        if self._is_session_expired(conversation):
-            self.clear_conversation(session_id)
-            return []
-
-        return conversation.get('messages', [])
-
-    def add_user_message(self, session_id: str, message: str, message_id: str) -> str:
-        """
-        Add a user message to conversation history.
-
-        Args:
-            session_id: Chat session identifier
-            message: User message content
-            message_id: Message ID from frontend (required)
-
-        Returns:
-            The message ID
-        """
-        if not message_id:
-            raise ValueError("message_id is required and must be provided by the frontend")
-
-        if self.use_redis:
-            self._add_user_message_redis(session_id, message, message_id)
-        else:
-            self._add_user_message_memory(session_id, message, message_id)
-
-        return message_id
-
-    def _add_user_message_redis(self, session_id: str, message: str, message_id: str) -> None:
-        """Add user message to Redis."""
-        redis_key = f"{self._redis_prefix}{session_id}"
-
-        try:
-            # Get existing conversation or create new
-            conversation_data = self.redis_client.hgetall(redis_key)
-
-            if not conversation_data:
-                # Create new conversation
+            if not isinstance(messages, list):
                 messages = []
-                created_at = datetime.now().isoformat()
-            else:
-                # Get existing messages
-                messages = conversation_data.get('messages', [])
-                if isinstance(messages, str):
-                    messages = json.loads(messages)
-                if not isinstance(messages, list):
-                    messages = []
-                created_at = conversation_data.get('created_at', datetime.now().isoformat())
+            created_at = conversation_data.get('created_at', datetime.now().isoformat())
 
-            # Add new user message with message_id
-            message_data = {
-                'role': 'user',
-                'content': message,
-                'message_id': message_id,
-                'timestamp': datetime.now().isoformat()
-            }
-            messages.append(message_data)
-
-            # Trim conversation history
-            messages = self._trim_messages(messages)
-
-            # Update Redis with new data
-            update_data = {
-                'messages': json.dumps(messages),
-                'created_at': created_at,
-                'last_activity': datetime.now().isoformat()
-            }
-
-            # Use mapping parameter to set multiple fields at once
-            self.redis_client.hset(redis_key, mapping=update_data)
-
-            # Set expiration on the key (session timeout)
-            self.redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
-
-            logger.debug(f"Added user message to Redis conversation {session_id} with message_id {message_id}")
-
-        except Exception as e:
-            logger.error(f"Error adding user message to Redis for {session_id}: {e}")
-
-    def _add_user_message_memory(self, session_id: str, message: str, message_id: str) -> None:
-        """Add user message to in-memory storage."""
-        self._ensure_conversation_exists(session_id)
-
+        # Add new user message
         message_data = {
             'role': 'user',
             'content': message,
             'message_id': message_id,
             'timestamp': datetime.now().isoformat()
         }
+        messages.append(message_data)
 
-        self._conversations[session_id]['messages'].append(message_data)
-        self._conversations[session_id]['last_activity'] = datetime.now()
-        self._trim_conversation_history(session_id)
+        # Trim conversation history
+        messages = self._trim_messages(messages)
 
-    def add_assistant_response(self, session_id: str, response: Any, message_id: str,
-                              es_query: Optional[Dict] = None, user_message_id: Optional[str] = None) -> str:
-        """
-        Add an assistant response to conversation history with comprehensive data.
+        # Update Redis
+        update_data = {
+            'messages': json.dumps(messages),
+            'created_at': created_at,
+            'last_activity': datetime.now().isoformat()
+        }
 
-        Args:
-            session_id: Chat session identifier
-            response: Assistant response content (can be dict with all workflow data or string)
-            message_id: Response message ID (required, must be provided by the frontend)
-            es_query: Optional Elasticsearch query that generated this response
-            user_message_id: Optional ID of the user message this responds to
+        redis_client.hset(redis_key, mapping=update_data)
+        redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
 
-        Returns:
-            The response message ID
-        """
-
-        if not message_id:
-            raise ValueError("message_id is required and must be provided by the frontend")
-
-        if self.use_redis:
-            self._add_assistant_response_redis(session_id, response, message_id, es_query, user_message_id)
-        else:
-            self._add_assistant_response_memory(session_id, response, message_id, es_query, user_message_id)
-
-        # Store ES query in Redis if provided and user_message_id is available
-        if es_query and user_message_id:
-            store_message_query(session_id, user_message_id, es_query)
-            logger.info(f"Stored ES query for session {session_id}, message {user_message_id}")
-
+        logger.debug(f"Added user message to conversation {session_id} with message_id {message_id}")
         return message_id
 
-    def _add_assistant_response_redis(self, session_id: str, response: Any, message_id: str,
-                                    es_query: Optional[Dict], user_message_id: Optional[str]) -> None:
-        """Add comprehensive assistant response to Redis."""
+    def add_assistant_response(self, session_id: str, response: Any, message_id: str,
+                              es_query: Dict = None, user_message_id: str = None) -> str:
+        """Add an assistant response to conversation history."""
         redis_key = f"{self._redis_prefix}{session_id}"
+        conversation_data = redis_client.hgetall(redis_key)
 
-        try:
-            # Get existing conversation
-            conversation_data = self.redis_client.hgetall(redis_key)
-
-            if not conversation_data:
-                # Create new conversation if it doesn't exist
-                messages = []
-                created_at = datetime.now().isoformat()
-            else:
-                # Get existing messages
-                messages = conversation_data.get('messages', [])
-                if isinstance(messages, str):
-                    messages = json.loads(messages)
-                if not isinstance(messages, list):
-                    messages = []
-                created_at = conversation_data.get('created_at', datetime.now().isoformat())
-
-            # Handle comprehensive response data
-            if isinstance(response, dict):
-                # Store all comprehensive workflow data
-                comprehensive_data = {
-                    'workflow_plan': response.get('workflow_plan', []),
-                    'expected_output': response.get('expected_output', ''),
-                    'explanation': response.get('explanation', ''),
-                    'elastic_query': response.get('elastic_query'),
-                    'data_markdown': response.get('data_markdown'),
-                    'summary': response.get('summary'),
-                    'chart_config': response.get('chart_config'),
-                    'json_data': response.get('json_data'),
-                    'database_type': response.get('database_type'),
-                    'total_records': len(json.loads(response.get('json_data', '[]'))) if response.get('json_data') else 0
-                }
-
-                # Filter out None values
-                comprehensive_data = {k: v for k, v in comprehensive_data.items() if v is not None}
-
-                # Create content summary for display
-                content_parts = []
-                if comprehensive_data.get('summary'):
-                    content_parts.append(f"Summary: {comprehensive_data['summary']}")
-                if comprehensive_data.get('total_records'):
-                    content_parts.append(f"Records: {comprehensive_data['total_records']}")
-                if comprehensive_data.get('chart_config'):
-                    content_parts.append("Chart: Generated")
-
-                content = "; ".join(content_parts) if content_parts else "Query processed"
-
-            else:
-                # Handle simple string response
-                content = str(response)
-                comprehensive_data = {}
-
-            # Create assistant message with all data
-            message_data = {
-                'role': 'assistant',
-                'content': content,
-                'comprehensive_data': comprehensive_data,  # Store ALL workflow data
-                'message_id': message_id,
-                'timestamp': datetime.now().isoformat()
-            }
-
-            messages.append(message_data)
-
-            # Trim conversation history
-            messages = self._trim_messages(messages)
-
-            # Update Redis
-            update_data = {
-                'messages': json.dumps(messages),
-                'created_at': created_at,
-                'last_activity': datetime.now().isoformat()
-            }
-
-            # Use mapping parameter to set multiple fields at once
-            self.redis_client.hset(redis_key, mapping=update_data)
-
-            # Set expiration on the key
-            self.redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
-
-            logger.debug(f"Added comprehensive assistant response to Redis conversation {session_id} with message_id {message_id}")
-
-        except Exception as e:
-            logger.error(f"Error adding assistant response to Redis for {session_id}: {e}")
-
-    def _add_assistant_response_memory(self, session_id: str, response: Any, message_id: str,
-                                      es_query: Optional[Dict], user_message_id: Optional[str]) -> None:
-        """Add comprehensive assistant response to in-memory storage."""
-        self._ensure_conversation_exists(session_id)
-
-        # Handle comprehensive response data
-        if isinstance(response, dict):
-            # Store all comprehensive workflow data
-            comprehensive_data = {
-                'workflow_plan': response.get('workflow_plan', []),
-                'expected_output': response.get('expected_output', ''),
-                'explanation': response.get('explanation', ''),
-                'elastic_query': response.get('elastic_query'),
-                'data_markdown': response.get('data_markdown'),
-                'summary': response.get('summary'),
-                'chart_config': response.get('chart_config'),
-                'json_data': response.get('json_data'),
-                'database_type': response.get('database_type'),
-                'total_records': len(json.loads(response.get('json_data', '[]'))) if response.get('json_data') else 0
-            }
-
-            # Filter out None values
-            comprehensive_data = {k: v for k, v in comprehensive_data.items() if v is not None}
-
-            # Create content summary for display
-            content_parts = []
-            if comprehensive_data.get('summary'):
-                content_parts.append(f"Summary: {comprehensive_data['summary']}")
-            if comprehensive_data.get('total_records'):
-                content_parts.append(f"Records: {comprehensive_data['total_records']}")
-            if comprehensive_data.get('chart_config'):
-                content_parts.append("Chart: Generated")
-
-            content = "; ".join(content_parts) if content_parts else "Query processed"
-
+        if not conversation_data:
+            messages = []
+            created_at = datetime.now().isoformat()
         else:
-            # Handle simple string response
-            content = str(response)
-            comprehensive_data = {}
+            messages = conversation_data.get('messages', [])
+            if isinstance(messages, str):
+                messages = json.loads(messages)
+            if not isinstance(messages, list):
+                messages = []
+            created_at = conversation_data.get('created_at', datetime.now().isoformat())
 
-        # Create assistant message with all data
+        # Prepare response data
+        if isinstance(response, dict):
+            content = response.get('response', str(response))
+            metadata = {
+                'query_type': response.get('query_type'),
+                'database': response.get('database'),
+                'chart_type': response.get('chart_type'),
+                'total_results': response.get('total_results')
+            }
+        else:
+            content = str(response)
+            metadata = {}
+
         message_data = {
             'role': 'assistant',
             'content': content,
-            'comprehensive_data': comprehensive_data,  # Store ALL workflow data
             'message_id': message_id,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'metadata': metadata
         }
 
-        self._conversations[session_id]['messages'].append(message_data)
-        self._conversations[session_id]['last_activity'] = datetime.now()
-        self._trim_conversation_history(session_id)
+        if user_message_id:
+            message_data['user_message_id'] = user_message_id
 
-    def get_context_for_query(self, session_id: str) -> str:
-        """Get formatted context string for the current query (only user queries and database info)."""
-        history = self.get_conversation_history(session_id)
+        messages.append(message_data)
+        messages = self._trim_messages(messages)
 
-        if not history:
+        # Update Redis
+        update_data = {
+            'messages': json.dumps(messages),
+            'created_at': created_at,
+            'last_activity': datetime.now().isoformat()
+        }
+
+        redis_client.hset(redis_key, mapping=update_data)
+        redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
+
+        # Store ES query if provided
+        if es_query and user_message_id:
+            store_message_query(session_id, user_message_id, es_query)
+
+        logger.debug(f"Added assistant response to conversation {session_id} with message_id {message_id}")
+        return message_id
+
+    def clear_conversation(self, session_id: str) -> bool:
+        """Clear conversation history for a session."""
+        redis_key = f"{self._redis_prefix}{session_id}"
+        deleted = redis_client.delete(redis_key)
+        logger.info(f"Cleared conversation for session {session_id}")
+        return deleted > 0
+
+    def get_recent_context(self, session_id: str, max_exchanges: int = 3) -> str:
+        """Get recent conversation context as formatted string."""
+        messages = self.get_conversation_history(session_id)
+
+        if not messages:
             return ""
 
-        # Format conversation history for LLM context - only user queries and database selections
+        # Get the last max_exchanges pairs of user/assistant messages
+        context_messages = messages[-(max_exchanges * 2):]
+
         context_parts = []
-        for msg in history[-6:]:  # Use last 6 messages for context
-            role = msg['role']
+        for msg in context_messages:
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
             if role == 'user':
-                content = msg['content']
                 context_parts.append(f"User: {content}")
-            elif role == 'assistant' and 'query_info' in msg:
-                # Only mention database and query existence, not full details
-                query_info = msg['query_info']
-                database = query_info.get('database', 'Unknown')
-                has_query = 'elastic_query' in query_info
-                summary = f"Assistant: Used {database} database"
-                if has_query:
-                    summary += " with Elasticsearch query"
-                context_parts.append(summary)
+            elif role == 'assistant':
+                context_parts.append(f"Assistant: {content}")
 
         return "\n".join(context_parts)
 
-    def clear_conversation(self, session_id: str) -> None:
-        """Clear conversation history for a session."""
-        if self.use_redis:
-            self._clear_conversation_redis(session_id)
-        else:
-            self._clear_conversation_memory(session_id)
+    def get_session_stats(self, session_id: str) -> Dict[str, Any]:
+        """Get statistics for a conversation session."""
+        messages = self.get_conversation_history(session_id)
 
-    def _clear_conversation_redis(self, session_id: str) -> None:
-        """Clear conversation from Redis."""
-        redis_key = f"{self._redis_prefix}{session_id}"
-        try:
-            self.redis_client.delete(redis_key)
-            logger.debug(f"Cleared Redis conversation {session_id}")
-        except Exception as e:
-            logger.error(f"Error clearing Redis conversation {session_id}: {e}")
-
-    def _clear_conversation_memory(self, session_id: str) -> None:
-        """Clear conversation from in-memory storage."""
-        if session_id in self._conversations:
-            del self._conversations[session_id]
-
-    def get_recent_data_context(self, session_id: str) -> Optional[Dict]:
-        """Get recent query context (only database and query info)."""
-        history = self.get_conversation_history(session_id)
-
-        # Look for recent query info in assistant responses
-        for msg in reversed(history[-3:]):  # Check last 3 messages
-            if msg['role'] == 'assistant' and 'query_info' in msg:
-                return msg['query_info']  # Only contains elastic_query and database
-
-        return None
-
-    def _trim_messages(self, messages: List[Dict]) -> List[Dict]:
-        """Trim messages list to maximum length."""
-        max_messages = self._max_history_length * 2  # user + assistant = 2 messages per exchange
-        if len(messages) > max_messages:
-            return messages[-max_messages:]
-        return messages
-
-    def _ensure_conversation_exists(self, session_id: str) -> None:
-        """Ensure conversation exists for session (in-memory only)."""
-        if session_id not in self._conversations:
-            self._conversations[session_id] = {
-                'messages': [],
-                'created_at': datetime.now(),
-                'last_activity': datetime.now()
+        if not messages:
+            return {
+                'total_messages': 0,
+                'user_messages': 0,
+                'assistant_messages': 0,
+                'created_at': None,
+                'last_activity': None
             }
 
-    def _trim_conversation_history(self, session_id: str) -> None:
-        """Trim conversation history to maximum length (in-memory only)."""
-        if session_id in self._conversations:
-            messages = self._conversations[session_id]['messages']
-            if len(messages) > self._max_history_length * 2:  # user + assistant = 2 messages per exchange
-                # Keep the most recent exchanges
-                self._conversations[session_id]['messages'] = messages[-(self._max_history_length * 2):]
+        user_count = sum(1 for msg in messages if msg.get('role') == 'user')
+        assistant_count = sum(1 for msg in messages if msg.get('role') == 'assistant')
 
-    def _is_session_expired(self, conversation: Dict) -> bool:
-        """Check if session has expired (in-memory only)."""
-        last_activity = conversation.get('last_activity', datetime.now())
-        return datetime.now() - last_activity > self._session_timeout
+        redis_key = f"{self._redis_prefix}{session_id}"
+        conversation_data = redis_client.hgetall(redis_key)
 
-    def _is_session_expired_time(self, last_activity: datetime) -> bool:
-        """Check if session has expired based on last activity time."""
-        return datetime.now() - last_activity > self._session_timeout
+        return {
+            'total_messages': len(messages),
+            'user_messages': user_count,
+            'assistant_messages': assistant_count,
+            'created_at': conversation_data.get('created_at'),
+            'last_activity': conversation_data.get('last_activity')
+        }
 
-    def _create_minimal_response_summary(self, query_info: Dict[str, Any]) -> str:
-        """Create a minimal summary with only database and query info."""
-        summary_parts = []
-
-        if 'database' in query_info:
-            summary_parts.append(f"Database: {query_info['database']}")
-
-        if 'elastic_query' in query_info:
-            summary_parts.append("Executed Elasticsearch query")
-
-        return "; ".join(summary_parts) if summary_parts else "Processed query"
+    def _trim_messages(self, messages: List[Dict]) -> List[Dict]:
+        """Trim messages to maximum history length."""
+        if len(messages) > self._max_history_length:
+            return messages[-self._max_history_length:]
+        return messages
 
 
-# Global instance
+# Global conversation service instance
 conversation_service = ConversationService()
