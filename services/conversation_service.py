@@ -1,11 +1,10 @@
 """Conversation history management service with Redis support."""
 import json
 import logging
-import uuid
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 
-from util.redis_client import get_redis_client, is_redis_available, store_message_query, get_message_query
+from util.redis_client import get_redis_client, is_redis_available, store_message_query
 
 logger = logging.getLogger(__name__)
 
@@ -168,21 +167,24 @@ class ConversationService:
         self._conversations[session_id]['last_activity'] = datetime.now()
         self._trim_conversation_history(session_id)
 
-    def add_assistant_response(self, session_id: str, response: str, message_id: Optional[str] = None,
+    def add_assistant_response(self, session_id: str, response: Any, message_id: str,
                               es_query: Optional[Dict] = None, user_message_id: Optional[str] = None) -> str:
         """
-        Add an assistant response to conversation history.
+        Add an assistant response to conversation history with comprehensive data.
 
         Args:
             session_id: Chat session identifier
-            response: Assistant response content
-            message_id: Optional response message ID, generates one if not provided
+            response: Assistant response content (can be dict with all workflow data or string)
+            message_id: Response message ID (required, must be provided by the frontend)
             es_query: Optional Elasticsearch query that generated this response
             user_message_id: Optional ID of the user message this responds to
 
         Returns:
-            The response message ID (generated or provided)
+            The response message ID
         """
+
+        if not message_id:
+            raise ValueError("message_id is required and must be provided by the frontend")
 
         if self.use_redis:
             self._add_assistant_response_redis(session_id, response, message_id, es_query, user_message_id)
@@ -196,25 +198,10 @@ class ConversationService:
 
         return message_id
 
-    def _add_assistant_response_redis(self, session_id: str, response: str, message_id: str,
+    def _add_assistant_response_redis(self, session_id: str, response: Any, message_id: str,
                                     es_query: Optional[Dict], user_message_id: Optional[str]) -> None:
-        """Add assistant response to Redis."""
+        """Add comprehensive assistant response to Redis."""
         redis_key = f"{self._redis_prefix}{session_id}"
-
-        # Only store elastic query and database name, nothing else
-        filtered_response = {}
-
-        # Check if es_query exists before accessing its contents
-        if es_query is not None:
-            if 'elastic_query' in es_query:
-                filtered_response['elastic_query'] = es_query['elastic_query']
-
-            if 'database' in es_query:
-                filtered_response['database'] = es_query['database']
-
-        # Only add to history if we have something relevant to store
-        if not filtered_response:
-            return
 
         try:
             # Get existing conversation
@@ -233,12 +220,46 @@ class ConversationService:
                     messages = []
                 created_at = conversation_data.get('created_at', datetime.now().isoformat())
 
-            # Create assistant message
-            summary_content = self._create_minimal_response_summary(filtered_response)
+            # Handle comprehensive response data
+            if isinstance(response, dict):
+                # Store all comprehensive workflow data
+                comprehensive_data = {
+                    'workflow_plan': response.get('workflow_plan', []),
+                    'expected_output': response.get('expected_output', ''),
+                    'explanation': response.get('explanation', ''),
+                    'elastic_query': response.get('elastic_query'),
+                    'data_markdown': response.get('data_markdown'),
+                    'summary': response.get('summary'),
+                    'chart_config': response.get('chart_config'),
+                    'json_data': response.get('json_data'),
+                    'database_type': response.get('database_type'),
+                    'total_records': len(json.loads(response.get('json_data', '[]'))) if response.get('json_data') else 0
+                }
+
+                # Filter out None values
+                comprehensive_data = {k: v for k, v in comprehensive_data.items() if v is not None}
+
+                # Create content summary for display
+                content_parts = []
+                if comprehensive_data.get('summary'):
+                    content_parts.append(f"Summary: {comprehensive_data['summary']}")
+                if comprehensive_data.get('total_records'):
+                    content_parts.append(f"Records: {comprehensive_data['total_records']}")
+                if comprehensive_data.get('chart_config'):
+                    content_parts.append("Chart: Generated")
+
+                content = "; ".join(content_parts) if content_parts else "Query processed"
+
+            else:
+                # Handle simple string response
+                content = str(response)
+                comprehensive_data = {}
+
+            # Create assistant message with all data
             message_data = {
                 'role': 'assistant',
-                'content': summary_content,
-                'query_info': filtered_response,  # Store only elastic_query and database
+                'content': content,
+                'comprehensive_data': comprehensive_data,  # Store ALL workflow data
                 'message_id': message_id,
                 'timestamp': datetime.now().isoformat()
             }
@@ -261,43 +282,63 @@ class ConversationService:
             # Set expiration on the key
             self.redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
 
-            logger.debug(f"Added assistant response to Redis conversation {session_id} with message_id {message_id}")
+            logger.debug(f"Added comprehensive assistant response to Redis conversation {session_id} with message_id {message_id}")
 
         except Exception as e:
             logger.error(f"Error adding assistant response to Redis for {session_id}: {e}")
 
-    def _add_assistant_response_memory(self, session_id: str, response: str, message_id: str,
+    def _add_assistant_response_memory(self, session_id: str, response: Any, message_id: str,
                                       es_query: Optional[Dict], user_message_id: Optional[str]) -> None:
-        """Add assistant response to in-memory storage."""
+        """Add comprehensive assistant response to in-memory storage."""
         self._ensure_conversation_exists(session_id)
 
-        # Only store elastic query and database name, nothing else
-        filtered_response = {}
-
-        # Check if es_query exists before accessing its contents
-        if es_query is not None:
-            if 'elastic_query' in es_query:
-                filtered_response['elastic_query'] = es_query['elastic_query']
-
-            if 'database' in es_query:
-                filtered_response['database'] = es_query['database']
-
-        # Only add to history if we have something relevant to store
-        if filtered_response:
-            # Create a summary of just the essential query information
-            summary_content = self._create_minimal_response_summary(filtered_response)
-
-            message_data = {
-                'role': 'assistant',
-                'content': summary_content,
-                'query_info': filtered_response,  # Store only elastic_query and database
-                'message_id': message_id,
-                'timestamp': datetime.now().isoformat()
+        # Handle comprehensive response data
+        if isinstance(response, dict):
+            # Store all comprehensive workflow data
+            comprehensive_data = {
+                'workflow_plan': response.get('workflow_plan', []),
+                'expected_output': response.get('expected_output', ''),
+                'explanation': response.get('explanation', ''),
+                'elastic_query': response.get('elastic_query'),
+                'data_markdown': response.get('data_markdown'),
+                'summary': response.get('summary'),
+                'chart_config': response.get('chart_config'),
+                'json_data': response.get('json_data'),
+                'database_type': response.get('database_type'),
+                'total_records': len(json.loads(response.get('json_data', '[]'))) if response.get('json_data') else 0
             }
 
-            self._conversations[session_id]['messages'].append(message_data)
-            self._conversations[session_id]['last_activity'] = datetime.now()
-            self._trim_conversation_history(session_id)
+            # Filter out None values
+            comprehensive_data = {k: v for k, v in comprehensive_data.items() if v is not None}
+
+            # Create content summary for display
+            content_parts = []
+            if comprehensive_data.get('summary'):
+                content_parts.append(f"Summary: {comprehensive_data['summary']}")
+            if comprehensive_data.get('total_records'):
+                content_parts.append(f"Records: {comprehensive_data['total_records']}")
+            if comprehensive_data.get('chart_config'):
+                content_parts.append("Chart: Generated")
+
+            content = "; ".join(content_parts) if content_parts else "Query processed"
+
+        else:
+            # Handle simple string response
+            content = str(response)
+            comprehensive_data = {}
+
+        # Create assistant message with all data
+        message_data = {
+            'role': 'assistant',
+            'content': content,
+            'comprehensive_data': comprehensive_data,  # Store ALL workflow data
+            'message_id': message_id,
+            'timestamp': datetime.now().isoformat()
+        }
+
+        self._conversations[session_id]['messages'].append(message_data)
+        self._conversations[session_id]['last_activity'] = datetime.now()
+        self._trim_conversation_history(session_id)
 
     def get_context_for_query(self, session_id: str) -> str:
         """Get formatted context string for the current query (only user queries and database info)."""

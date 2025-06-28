@@ -7,21 +7,22 @@ class QueryWorkflowPlanner(dspy.Signature):
     """
     Signature for planning the workflow of signatures to execute based on user query.
     Determines the sequence of steps needed to fulfill the user's request, including:
-    - Data retrieval from databases
+    - Data retrieval from databases (including re-executing previous queries)
     - Summary generation (ALWAYS included for all queries)
     - Chart/visualization creation (ONLY if explicitly requested by user)
     - Query modifications
-    - Follow-up visualization requests (reuse previous data)
+    - Follow-up visualization requests (re-execute previous query then create chart)
 
     IMPORTANT: SummarySignature is ALWAYS included in the workflow for every query.
     IMPORTANT: Only include ChartAxisSelector if user explicitly asks for chart, graph, visualization, or plot.
     IMPORTANT: For follow-up visualization requests (e.g., "show in bar graph" after a data query),
-               only use ChartAxisSelector and SummarySignature - do NOT re-execute data queries.
+               ALWAYS re-execute the previous query first using EsQueryProcessor, then use ChartAxisSelector.
+               Use workflow: ['EsQueryProcessor', 'ChartAxisSelector', 'SummarySignature']
     Default behavior should be to return data with summary, unless user specifically requests charts.
 
     AVAILABLE SIGNATURE NAMES (use exactly these names):
     - DatabaseSelectionSignature: Select database type (Vector or Elastic)
-    - EsQueryProcessor: Execute Elasticsearch queries
+    - EsQueryProcessor: Execute Elasticsearch queries (can reuse previous query from conversation)
     - VectorQueryProcessor: Execute vector search queries
     - SummarySignature: Generate summaries (ALWAYS included)
     - ChartAxisSelector: Create charts/visualizations (only if explicitly requested)
@@ -37,20 +38,20 @@ class QueryWorkflowPlanner(dspy.Signature):
 
     # Output fields defining the workflow
     workflow_steps: List[str] = dspy.OutputField(
-        desc="Ordered list of EXACT signature names to execute. MUST use these exact names: 'DatabaseSelectionSignature', 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartAxisSelector'. SummarySignature MUST ALWAYS be included for every query. For follow-up visualization requests that reference previous data (e.g., 'show in bar graph' after data query), use ONLY: ['ChartAxisSelector', 'SummarySignature']. For new data queries use: ['DatabaseSelectionSignature', 'EsQueryProcessor', 'SummarySignature'] or ['DatabaseSelectionSignature', 'VectorQueryProcessor', 'SummarySignature']."
+        desc="Ordered list of EXACT signature names to execute. MUST use these exact names: 'DatabaseSelectionSignature', 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartAxisSelector'. SummarySignature MUST ALWAYS be included for every query. For follow-up visualization requests that reference previous data (e.g., 'show in scatter graph', 'visualize above data'), ALWAYS re-execute the query first: ['EsQueryProcessor', 'ChartAxisSelector', 'SummarySignature']. For new data queries use: ['DatabaseSelectionSignature', 'EsQueryProcessor', 'SummarySignature'] or ['DatabaseSelectionSignature', 'VectorQueryProcessor', 'SummarySignature']."
     )
-    requires_data_retrieval: bool = dspy.OutputField(desc="Whether the query requires fetching NEW data from a database (False for follow-up visualization requests)")
+    requires_data_retrieval: bool = dspy.OutputField(desc="Whether the query requires fetching data from a database (True for follow-up visualization requests that need to re-execute previous queries)")
     requires_summary: bool = dspy.OutputField(desc="Always True - summary is always generated for every query")
     requires_visualization: bool = dspy.OutputField(desc="Whether the user explicitly asked for a chart, graph, visualization, or plot in their query")
     is_modification_request: bool = dspy.OutputField(desc="Whether this is a request to modify a previous query")
-    is_followup_visualization: bool = dspy.OutputField(desc="Whether this is a follow-up request to visualize previously retrieved data (e.g., 'show in bar graph' after data query)")
+    is_followup_visualization: bool = dspy.OutputField(desc="Whether this is a follow-up request to visualize previously retrieved data (e.g., 'show in scatter graph' after data query)")
     modification_type: Optional[Literal['query_change', 'new_chart', 'chart_modification', 'followup_visualization']] = dspy.OutputField(
         desc="Type of modification if this is a modification request. Use 'followup_visualization' for requests to visualize previous data", default=None
     )
     expected_final_output: Literal['data_and_summary', 'summary_and_chart', 'modified_query', 'chart_from_previous_data'] = dspy.OutputField(
         desc="The type of final output the user expects - always includes summary, optionally includes chart. Use 'chart_from_previous_data' for follow-up visualization requests"
     )
-    explanation: str = dspy.OutputField(desc="Brief explanation of the planned workflow and reasoning, noting whether this reuses previous data for visualization or fetches new data")
+    explanation: str = dspy.OutputField(desc="Brief explanation of the planned workflow and reasoning, noting that follow-up visualization requests will re-execute the previous query to get fresh data before creating the chart")
 
 
 class DatabaseSelectionSignature(dspy.Signature):

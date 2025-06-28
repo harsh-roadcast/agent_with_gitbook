@@ -31,15 +31,19 @@ async def search_endpoint(request: Request):
         limit = data.get("limit", 10)
         filters = data.get("filters", {})
         session_id = data.get("session_id", "search_session")
+        message_id = data.get("message_id")  # Single message_id from frontend
 
         if not query:
             return JSONResponse(status_code=400, content={"error": "Query parameter is required"})
+
+        if not message_id:
+            return JSONResponse(status_code=400, content={"error": "message_id is required"})
 
         user_id = "anonymous_user"  # Simplified for search endpoint
         logger.info(f"Search request from user {user_id}: {query[:100]}...")
 
         # Add to conversation history and get context
-        conversation_service.add_user_message(session_id, query)
+        conversation_service.add_user_message(session_id, query, message_id)
         conversation_history = conversation_service.get_conversation_history(session_id)
 
         # Use ActionDecider to process the search query
@@ -73,8 +77,8 @@ async def search_endpoint(request: Request):
             "timestamp": int(time.time())
         }
 
-        # Add response to conversation history
-        conversation_service.add_assistant_response(session_id, {"search_results": search_results})
+        # Add response to conversation history using the same message_id
+        conversation_service.add_assistant_response(session_id, {"search_results": search_results}, message_id)
 
         return JSONResponse(content=response)
 

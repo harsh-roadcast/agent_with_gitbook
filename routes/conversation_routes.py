@@ -104,9 +104,13 @@ async def add_message_to_thread(
     try:
         message = request.get("message", "")
         stream = request.get("stream", False)
+        message_id = request.get("message_id")  # Single message_id from frontend
 
         if not message:
             return JSONResponse(status_code=400, content={"error": "Message is required"})
+
+        if not message_id:
+            return JSONResponse(status_code=400, content={"error": "message_id is required"})
 
         user_id = current_user.get('user_id', 'anonymous_user')
         logger.info(f"Adding message to thread {thread_id} for user {user_id}")
@@ -117,13 +121,13 @@ async def add_message_to_thread(
             from sse_starlette.sse import EventSourceResponse
 
             return EventSourceResponse(
-                generate_stream(message, thread_id, current_user, model="LLM_TEXT_SQL")
+                generate_stream(message, thread_id, current_user, model="LLM_TEXT_SQL", message_id=message_id)
             )
         else:
             # Non-streaming response
             from modules.models import ActionDecider
 
-            conversation_service.add_user_message(thread_id, message)
+            conversation_service.add_user_message(thread_id, message, message_id)
             conversation_history = conversation_service.get_conversation_history(thread_id)
 
             ad = ActionDecider()
@@ -136,11 +140,11 @@ async def add_message_to_thread(
                 if field not in ["database", "chart_html"]:
                     result_dict[field] = value
 
-            conversation_service.add_assistant_response(thread_id, result_dict)
+            conversation_service.add_assistant_response(thread_id, result_dict, message_id)
 
             response = {
                 "thread_id": thread_id,
-                "message_id": f"msg_{thread_id}_{int(time.time())}",
+                "message_id": message_id,  # Use the same message ID
                 "user_id": user_id,
                 "created_at": int(time.time()),
                 "role": "assistant",

@@ -91,10 +91,14 @@ class ActionDecider(dspy.Module):
             Tuples of (field_name, field_value) as results are generated
         """
         try:
-            # Convert list to string for compatibility if needed
+            # Convert list to JSON string for compatibility if needed
             history_str = None
             if conversation_history:
-                history_str = str(conversation_history) if isinstance(conversation_history, list) else conversation_history
+                if isinstance(conversation_history, list):
+                    import json
+                    history_str = json.dumps(conversation_history)
+                else:
+                    history_str = conversation_history
 
             # Use modular architecture - directly iterate over the async generator
             async for field_name, field_value in self._query_agent.process_query_async(

@@ -57,16 +57,16 @@ class QueryAgent(IQueryAgent):
             return None
 
         try:
-            # If it's already a string that looks like JSON, parse it
-            if isinstance(conversation_history, str):
-                return json.loads(conversation_history)
             # If it's already a list, return as is
-            elif isinstance(conversation_history, list):
+            if isinstance(conversation_history, list):
                 return conversation_history
+            # If it's a string that looks like JSON, parse it
+            elif isinstance(conversation_history, str):
+                return json.loads(conversation_history)
             else:
                 return None
-        except (json.JSONDecodeError, TypeError):
-            logger.warning(f"Failed to parse conversation history: {conversation_history}")
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning(f"Failed to parse conversation history: {conversation_history}, error: {e}")
             return None
 
     @monitor_performance("query_processing")
@@ -127,7 +127,9 @@ class QueryAgent(IQueryAgent):
                 'chart_config': None,
                 'chart_html': None,
                 'json_data': None,
-                'data_markdown': None
+                'data_markdown': None,
+                'elastic_query': None,  # Store the generated ES query
+                'workflow_plan': workflow_plan  # Store the workflow plan for reference
             }
 
             # Check if this is a follow-up visualization request
@@ -219,10 +221,15 @@ class QueryAgent(IQueryAgent):
 
     def _execute_es_query(self, workflow_state: Dict[str, Any], user_query: str, parsed_history: Optional[List[Dict]],
                          session_id: Optional[str] = None, message_id: Optional[str] = None) -> Dict[str, Any]:
-        """Execute Elasticsearch query step."""
+        """Execute Elasticsearch query step using LLM signatures."""
         try:
             logger.info(f"Executing Elasticsearch query: {user_query}")
-            # Use the injected query_executor instead of direct processor
+
+            # Pass the follow-up visualization flag to the workflow state for the signature to use
+            is_followup_viz = getattr(workflow_state.get('workflow_plan', {}), 'is_followup_visualization', False)
+            workflow_state['is_followup_visualization'] = is_followup_viz
+
+            # Use the query executor with LLM signatures to handle everything
             query_result = self.query_executor.execute_query(
                 DatabaseType.ELASTIC, user_query, self.config.es_schema,
                 self.config.es_instructions, parsed_history
@@ -230,7 +237,13 @@ class QueryAgent(IQueryAgent):
 
             workflow_state['query_result'] = query_result
             workflow_state['json_data'] = json.dumps(query_result.data)
-            logger.info(f"Query result: {query_result}, session_id: {session_id}, message_id: {message_id}")
+
+            # Store the generated Elasticsearch query for history
+            if hasattr(query_result, 'elastic_query') and query_result.elastic_query:
+                workflow_state['elastic_query'] = query_result.elastic_query
+
+            logger.info(f"Query result: {len(query_result.data)} records, session_id: {session_id}, message_id: {message_id}")
+
             # Store ES query in Redis if we have session and message IDs
             if session_id and message_id and hasattr(query_result, 'elastic_query') and query_result.elastic_query:
                 from util.redis_client import store_message_query
@@ -336,7 +349,6 @@ class QueryAgent(IQueryAgent):
             workflow_state['chart_config'] = None
             workflow_state['chart_html'] = None
             return workflow_state
-
 
     def _fallback_to_original_process_query(self, user_query: str, parsed_history: Optional[List[Dict]], conversation_history: Optional[str]) -> ProcessedResult:
         """Fallback to the original process_query implementation."""
@@ -536,3 +548,29 @@ class QueryAgent(IQueryAgent):
 
         logger.warning("No previous query data found in conversation history")
         return None
+
+    def _extract_previous_elasticsearch_query(self, parsed_history: Optional[List[Dict]]) -> Optional[Dict]:
+        """
+        Extract the most recent Elasticsearch query from conversation history.
+
+        Args:
+            parsed_history: Parsed conversation history
+
+        Returns:
+            Dictionary representing the Elasticsearch query or None if not found
+        """
+        if not parsed_history:
+            return None
+
+        # Look for the most recent message with an Elasticsearch query
+        for message in reversed(parsed_history):
+            if isinstance(message, dict):
+                # Check for the 'elastic_query' field which contains the original query
+                if 'elastic_query' in message and message['elastic_query']:
+                    query = message['elastic_query']
+                    logger.info("Found previous Elasticsearch query in message structure")
+                    return query
+
+        logger.warning("No previous Elasticsearch query found in conversation history")
+        return None
+
