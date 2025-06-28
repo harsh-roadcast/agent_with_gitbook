@@ -29,10 +29,6 @@ class ConversationService:
         self._session_timeout = timedelta(hours=2)  # Session timeout
         self._redis_prefix = "conversation:"  # Redis key prefix
 
-    def generate_message_id(self) -> str:
-        """Generate a unique message ID."""
-        return str(uuid.uuid4())
-
     def get_conversation_history(self, session_id: str) -> List[Dict[str, Any]]:
         """Get conversation history for a session."""
         if self.use_redis:
@@ -84,20 +80,20 @@ class ConversationService:
 
         return conversation.get('messages', [])
 
-    def add_user_message(self, session_id: str, message: str, message_id: Optional[str] = None) -> str:
+    def add_user_message(self, session_id: str, message: str, message_id: str) -> str:
         """
         Add a user message to conversation history.
 
         Args:
             session_id: Chat session identifier
             message: User message content
-            message_id: Optional message ID, generates one if not provided
+            message_id: Message ID from frontend (required)
 
         Returns:
-            The message ID (generated or provided)
+            The message ID
         """
-        if message_id is None:
-            message_id = self.generate_message_id()
+        if not message_id:
+            raise ValueError("message_id is required and must be provided by the frontend")
 
         if self.use_redis:
             self._add_user_message_redis(session_id, message, message_id)
@@ -187,8 +183,6 @@ class ConversationService:
         Returns:
             The response message ID (generated or provided)
         """
-        if message_id is None:
-            message_id = self.generate_message_id()
 
         if self.use_redis:
             self._add_assistant_response_redis(session_id, response, message_id, es_query, user_message_id)

@@ -221,6 +221,7 @@ class QueryAgent(IQueryAgent):
                          session_id: Optional[str] = None, message_id: Optional[str] = None) -> Dict[str, Any]:
         """Execute Elasticsearch query step."""
         try:
+            logger.info(f"Executing Elasticsearch query: {user_query}")
             # Use the injected query_executor instead of direct processor
             query_result = self.query_executor.execute_query(
                 DatabaseType.ELASTIC, user_query, self.config.es_schema,
@@ -229,7 +230,6 @@ class QueryAgent(IQueryAgent):
 
             workflow_state['query_result'] = query_result
             workflow_state['json_data'] = json.dumps(query_result.data)
-
             logger.info(f"Query result: {query_result}, session_id: {session_id}, message_id: {message_id}")
             # Store ES query in Redis if we have session and message IDs
             if session_id and message_id and hasattr(query_result, 'elastic_query') and query_result.elastic_query:

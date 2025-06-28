@@ -3,8 +3,17 @@ import pathlib
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
-from routes import query_routes, main_routes, auth_routes
+# Import all the new separated route modules
+from routes import (
+    main_routes,
+    auth_routes,
+    chat_routes,
+    elasticsearch_routes,
+    conversation_routes,
+    search_routes
+)
 from services.llm_service import init_llm
 
 # Configure logging
@@ -26,8 +35,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 # Initialize DSPy with local LLM
 llm = init_llm(model_name="ollama_chat/qwen3:8b")
 
-from fastapi.middleware.cors import CORSMiddleware
-
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure appropriately for production
@@ -40,11 +48,13 @@ app.add_middleware(
 def get_static_dir():
     return static_dir
 
-
-# Include routers
-app.include_router(query_routes.router)
+# Include all the separated routers
 app.include_router(main_routes.router)
 app.include_router(auth_routes.router)
+app.include_router(chat_routes.router)
+app.include_router(elasticsearch_routes.router)
+app.include_router(conversation_routes.router)
+app.include_router(search_routes.router)
 
 # Legacy routes for backward compatibility
 @app.post("/v1/chat/completions")
