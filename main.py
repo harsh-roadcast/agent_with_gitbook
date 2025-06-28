@@ -19,6 +19,7 @@ from routes import (
 )
 from services.llm_service import init_llm
 from services.mapping_service import initialize_index_schema
+from services.auth_service import generate_startup_token
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("DSPy Agent API starting up")
     initialize_index_schema()
+    generate_startup_token()  # Generate and print token on startup
     yield
     # Shutdown
     logger.info("DSPy Agent API shutting down")
