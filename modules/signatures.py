@@ -18,14 +18,22 @@ class QueryWorkflowPlanner(dspy.Signature):
     IMPORTANT: For follow-up visualization requests (e.g., "show in bar graph" after a data query),
                ALWAYS re-execute the previous query first using EsQueryProcessor, then use ChartAxisSelector.
                Use workflow: ['EsQueryProcessor', 'ChartAxisSelector', 'SummarySignature']
+    IMPORTANT: For queries that require document/semantic search (personal info, document content, etc.),
+               use VectorQueryProcessor instead of EsQueryProcessor.
     Default behavior should be to return data with summary, unless user specifically requests charts.
 
     AVAILABLE SIGNATURE NAMES (use exactly these names):
     - DatabaseSelectionSignature: Select database type (Vector or Elastic)
-    - EsQueryProcessor: Execute Elasticsearch queries (can reuse previous query from conversation)
-    - VectorQueryProcessor: Execute vector search queries
+    - EsQueryProcessor: Execute Elasticsearch queries (for structured data queries)
+    - VectorQueryProcessor: Execute vector search queries (for document/semantic search)
     - SummarySignature: Generate summaries (ALWAYS included)
     - ChartAxisSelector: Create charts/visualizations (only if explicitly requested)
+
+    WORKFLOW PATTERNS:
+    - For structured data queries: ['DatabaseSelectionSignature', 'EsQueryProcessor', 'SummarySignature']
+    - For document/semantic search: ['DatabaseSelectionSignature', 'VectorQueryProcessor', 'SummarySignature']
+    - For personal info queries (salary, details): ['DatabaseSelectionSignature', 'VectorQueryProcessor', 'SummarySignature']
+    - For follow-up visualizations: ['EsQueryProcessor', 'ChartAxisSelector', 'SummarySignature']
 
     This signature acts as the orchestrator that guides the query agent on which
     signatures to call and in what order.
@@ -38,8 +46,9 @@ class QueryWorkflowPlanner(dspy.Signature):
 
     # Output fields defining the workflow
     workflow_steps: List[str] = dspy.OutputField(
-        desc="Ordered list of EXACT signature names to execute. MUST use these exact names: 'DatabaseSelectionSignature', 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartAxisSelector'. SummarySignature MUST ALWAYS be included for every query. For follow-up visualization requests that reference previous data (e.g., 'show in scatter graph', 'visualize above data'), ALWAYS re-execute the query first: ['EsQueryProcessor', 'ChartAxisSelector', 'SummarySignature']. For new data queries use: ['DatabaseSelectionSignature', 'EsQueryProcessor', 'SummarySignature'] or ['DatabaseSelectionSignature', 'VectorQueryProcessor', 'SummarySignature']."
+        desc="Ordered list of EXACT signature names to execute. MUST use these exact names: 'DatabaseSelectionSignature', 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartAxisSelector'. SummarySignature MUST ALWAYS be included for every query. For queries requiring document/semantic search (personal info, document content, salary details, etc.), use VectorQueryProcessor. For structured data queries (filtering, aggregations on schema fields), use EsQueryProcessor. For follow-up visualization requests that reference previous data (e.g., 'show in scatter graph', 'visualize above data'), ALWAYS re-execute the query first: ['EsQueryProcessor', 'ChartAxisSelector', 'SummarySignature']. For new data queries: use ['DatabaseSelectionSignature', 'VectorQueryProcessor', 'SummarySignature'] for document/semantic search or ['DatabaseSelectionSignature', 'EsQueryProcessor', 'SummarySignature'] for structured queries."
     )
+    query_analysis: str = dspy.OutputField(desc="Analysis of the query type - whether it requires structured data search (ES) or document/semantic search (Vector). Consider if the query asks for personal information, document content, or data not in structured schema.")
     requires_data_retrieval: bool = dspy.OutputField(desc="Whether the query requires fetching data from a database (True for follow-up visualization requests that need to re-execute previous queries)")
     requires_summary: bool = dspy.OutputField(desc="Always True - summary is always generated for every query")
     requires_visualization: bool = dspy.OutputField(desc="Whether the user explicitly asked for a chart, graph, visualization, or plot in their query")
@@ -51,23 +60,44 @@ class QueryWorkflowPlanner(dspy.Signature):
     expected_final_output: Literal['data_and_summary', 'summary_and_chart', 'modified_query', 'chart_from_previous_data'] = dspy.OutputField(
         desc="The type of final output the user expects - always includes summary, optionally includes chart. Use 'chart_from_previous_data' for follow-up visualization requests"
     )
-    explanation: str = dspy.OutputField(desc="Brief explanation of the planned workflow and reasoning, noting that follow-up visualization requests will re-execute the previous query to get fresh data before creating the chart")
+    explanation: str = dspy.OutputField(desc="Brief explanation of the planned workflow and reasoning, including why VectorQueryProcessor or EsQueryProcessor was chosen based on the query type. Note that follow-up visualization requests will re-execute the previous query to get fresh data before creating the chart")
 
 
 class DatabaseSelectionSignature(dspy.Signature):
     """
-    Signature for selecting the appropriate query based on user query, schemas, and conversation context.
+    Signature for selecting the appropriate database based on user query, schemas, and conversation context.
+
+    SELECTION LOGIC:
+    - Elastic: If the query can be executed using the indexes and columns mentioned in the ES schema
+    - Vector: If the query requires capabilities beyond what's available in the ES schema (semantic search, document similarity, specific person/entity information not in schema, etc.)
+
+    Elastic database is preferred for queries that match the available schema fields and indexes.
+    Vector database is used when the query requires semantic search, document retrieval, or information not available in the structured ES schema.
+
+    EXAMPLES:
+    - "Show vehicles with speed > 25km" → Elastic (uses schema fields)
+    - "What is the salary of John Doe" → Vector (personal info not in schema, requires document search)
+    - "Find contract terms" → Vector (document content search)
+    - "Count vehicles by type" → Elastic (uses schema aggregation)
+    - "Search for safety protocols" → Vector (semantic/document search)
+
     Considers previous queries and results to make better database selection decisions.
     Detects follow-up queries that reference previous conversation context.
-
     """
     user_query: str = dspy.InputField(desc="User's question")
-    es_schema: str = dspy.InputField(desc="Elastic schema")
+    es_schema: str = dspy.InputField(desc="Available Elasticsearch schema with indexes and columns")
     conversation_history: Optional[List[Dict]] = dspy.InputField(
         desc="Previous conversation messages for context",
         default=None
     )
-    database: Literal['Vector', 'Elastic'] = dspy.OutputField(desc="Selected database for query execution (Vector or Elastic)")
+
+    # Reasoning for database selection
+    schema_analysis: str = dspy.OutputField(desc="Detailed analysis of whether the query can be satisfied using the specific fields and indexes mentioned in the ES schema. Check if the query asks for information that exists as structured fields in the schema.")
+    query_type: str = dspy.OutputField(desc="Assessment of query type - structured data query vs semantic/document search vs personal/entity information retrieval")
+    schema_coverage: str = dspy.OutputField(desc="Assessment of whether the ES schema contains the necessary fields to answer this specific query. If the query asks for information not present in schema fields (like personal details, document content, etc.), note that Vector search is needed.")
+    database_rationale: str = dspy.OutputField(desc="Clear explanation of why Elastic or Vector database was selected based on schema field availability and query requirements")
+
+    database: Literal['Vector', 'Elastic'] = dspy.OutputField(desc="Selected database: 'Elastic' if query can be executed using schema indexes/columns, 'Vector' if query requires semantic search, document retrieval, or information not available in the structured ES schema fields")
 
 
 class EsQueryProcessor(dspy.Signature):

@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 # Elasticsearch Configuration
-ES_HOST = os.getenv('ES_HOST', 'https://62.72.41.235:9200')
-ES_USERNAME = os.getenv('ES_USERNAME', 'elastic')
-ES_PASSWORD = os.getenv('ES_PASSWORD', 'GGgCYcnpA_0R_fT5TfFY')
+ES_HOST = os.getenv('ES_HOST', None)
+ES_USERNAME = os.getenv('ES_USERNAME', None)
+ES_PASSWORD = os.getenv('ES_PASSWORD', None)
 ES_VERIFY_CERTS = os.getenv('ES_VERIFY_CERTS', 'False').lower() == 'true'
 
 # Initialize the sentence transformer model (loaded once)
@@ -44,6 +44,7 @@ def get_es_client():
     """
     Returns an Elasticsearch client instance using environment variables or defaults.
     """
+
     return Elasticsearch(
         [ES_HOST],
         http_auth=(ES_USERNAME, ES_PASSWORD),
@@ -136,92 +137,68 @@ def generate_embedding(text: str) -> List[float]:
 
 def execute_vector_query(es_query: dict) -> dict:
     """
-    Execute a vector search query using Elasticsearch's cosine similarity.
+    Execute a simple vector search query using Elasticsearch's cosine similarity.
 
     Args:
-        es_query: A dict with 'index', 'query_text', and optional 'size' keys
+        es_query: A dict with 'query_text' and optional 'index', 'size' keys
 
     Returns:
         Dictionary with the query results
     """
-    logger.info(f"Executing vector search ES query: {es_query}")
+    logger.info(f"Executing vector search: {es_query}")
 
-    # Validate that we have a proper vector query
+    # Basic validation
     if not es_query or not isinstance(es_query, dict):
-        error_msg = "Invalid or missing vector search query - cannot proceed"
-        logger.error(error_msg)
-        return {"error": error_msg, "query_type": "vector", "stop_processing": True}
+        return {"error": "Invalid vector search query", "query_type": "vector"}
+
+    # Extract parameters
+    query_text = es_query.get('query_text', '')
+    index = es_query.get('index', 'docling_documents')
+    size = min(es_query.get('size', 10), 25)  # Max 25 results
+
+    if not query_text:
+        return {"error": "Missing query_text", "query_type": "vector"}
 
     es = get_es_client()
+
     try:
-        index = es_query.get('index')
-        query_text = es_query.get('query_text', '')
-        field_name = es_query.get('embedding_field', 'embedding')
+        # Check if index exists
+        if not es.indices.exists(index=index):
+            return {"error": f"Index '{index}' does not exist", "query_type": "vector"}
 
-        if not index:
-            error_msg = "Missing 'index' in vector search query - cannot proceed"
-            logger.error(error_msg)
-            return {"error": error_msg, "query_type": "vector", "stop_processing": True}
+        # Generate embedding
+        embedding = generate_embedding(query_text)
+        logger.info(f"Generated embedding for: '{query_text[:50]}...'")
 
-        if not query_text:
-            error_msg = "Missing 'query_text' for vector search - cannot proceed"
-            logger.error(error_msg)
-            return {"error": error_msg, "query_type": "vector", "stop_processing": True}
-
-        # Generate embedding from the query text
-        try:
-            embedding = generate_embedding(query_text)
-        except Exception as e:
-            error_msg = f"Failed to generate embedding for vector search: {str(e)} - cannot proceed"
-            logger.error(error_msg)
-            return {"error": error_msg, "query_type": "vector", "stop_processing": True}
-
-        # ENFORCE MAXIMUM 25 RESULTS - Force maximum size to 25, no matter what was requested
-        max_size = 25
-        logger.info(f"Enforcing maximum result limit of {max_size} records for vector search")
-
-        # Build cosine similarity query with enforced size limit
+        # Simple vector search query
         vector_query = {
-            "size": max_size,
+            "size": size,
             "query": {
                 "script_score": {
                     "query": {"match_all": {}},
                     "script": {
-                        "source": f"cosineSimilarity(params.query_vector, '{field_name}') + 1.0",
+                        "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
                         "params": {"query_vector": embedding}
                     }
                 }
-            }
+            },
+            "_source": ["filename", "text", "chunk_id"]
         }
 
-        # Add any filters from the original query if they exist
-        if 'body' in es_query and 'query' in es_query['body']:
-            if 'bool' in es_query['body']['query'] and 'filter' in es_query['body']['query']['bool']:
-                vector_query['query']['script_score']['query'] = {
-                    "bool": {
-                        "filter": es_query['body']['query']['bool']['filter']
-                    }
-                }
-
-        logger.debug(f"Vector query: {vector_query}")
-
-        # Execute with a timeout to prevent hanging
+        # Execute search
         result = es.search(index=index, body=vector_query, request_timeout=30)
 
-        # Check if the result actually contains data
+        # Check for results
         total_hits = result.get('hits', {}).get('total', {}).get('value', 0)
         if total_hits == 0:
-            error_msg = f"Vector search returned 0 results for index {index} - cannot proceed"
-            logger.error(error_msg)
-            return {"error": error_msg, "query_type": "vector", "stop_processing": True}
+            return {"error": "No results found", "query_type": "vector"}
 
         logger.info(f"Vector search successful - found {total_hits} results")
         return {"success": True, "result": result, "query_type": "vector"}
 
     except Exception as e:
-        error_msg = f"Vector search execution failed: {str(e)} - cannot proceed"
-        logger.error(error_msg)
-        return {"error": error_msg, "query_type": "vector", "stop_processing": True}
+        logger.error(f"Vector search failed: {e}")
+        return {"error": str(e), "query_type": "vector"}
 
 
 def convert_json_to_markdown(data, title: str = "Query Results") -> str:

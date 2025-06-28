@@ -12,7 +12,8 @@ from routes import (
     chat_routes,
     elasticsearch_routes,
     conversation_routes,
-    search_routes
+    search_routes,
+    document_routes
 )
 from services.llm_service import init_llm
 
@@ -55,6 +56,7 @@ app.include_router(chat_routes.router)
 app.include_router(elasticsearch_routes.router)
 app.include_router(conversation_routes.router)
 app.include_router(search_routes.router)
+app.include_router(document_routes.router)
 
 # Legacy routes for backward compatibility
 @app.post("/v1/chat/completions")

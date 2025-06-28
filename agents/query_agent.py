@@ -177,6 +177,17 @@ class QueryAgent(IQueryAgent):
                 else:
                     logger.warning(f"Unknown workflow step: {step}")
 
+            # If database was selected but no query processor was explicitly called, route based on database type
+            if workflow_state.get('database_type') and not workflow_state.get('query_result'):
+                logger.info(f"Database selected ({workflow_state['database_type']}) but no query processor called. Auto-routing...")
+
+                if workflow_state['database_type'] == DatabaseType.VECTOR:
+                    logger.info("Auto-routing to VectorQueryProcessor")
+                    workflow_state = self._execute_vector_query(workflow_state, user_query, parsed_history)
+                elif workflow_state['database_type'] == DatabaseType.ELASTIC:
+                    logger.info("Auto-routing to EsQueryProcessor")
+                    workflow_state = self._execute_es_query(workflow_state, user_query, parsed_history)
+
             # Create final ProcessedResult
             return ProcessedResult(
                 query_result=workflow_state['query_result'] or QueryResult(
@@ -264,25 +275,54 @@ class QueryAgent(IQueryAgent):
             return workflow_state
 
     def _execute_vector_query(self, workflow_state: Dict[str, Any], user_query: str, parsed_history: Optional[List[Dict]]) -> Dict[str, Any]:
-        """Execute vector query step."""
+        """Execute vector query step by directly calling execute_vector_query."""
         try:
-            # Use the injected query_executor instead of direct processor
-            query_result = self.query_executor.execute_query(
-                DatabaseType.VECTOR, user_query, self.config.es_schema,
-                self.config.es_instructions, parsed_history
-            )
+            from services.search_service import execute_vector_query
 
-            workflow_state['query_result'] = query_result
-            workflow_state['json_data'] = json.dumps(query_result.data)
+            logger.info(f"Executing vector search for: {user_query}")
+
+            # Simple direct call to execute_vector_query
+            query_result = execute_vector_query({'query_text': user_query})
+
+            if query_result.get('error'):
+                logger.error(f"Vector search failed: {query_result['error']}")
+                workflow_state['query_result'] = QueryResult(
+                    database_type=DatabaseType.VECTOR,
+                    data=[],
+                    raw_result={"error": query_result['error']}
+                )
+                workflow_state['json_data'] = json.dumps([])
+            else:
+                # Extract data from the vector search result
+                result_data = query_result.get('result', {})
+                hits = result_data.get('hits', {}).get('hits', [])
+                data = [hit.get('_source', {}) for hit in hits]
+
+                workflow_state['query_result'] = QueryResult(
+                    database_type=DatabaseType.VECTOR,
+                    data=data,
+                    raw_result=result_data
+                )
+                workflow_state['json_data'] = json.dumps(data)
+                logger.info(f"Vector search successful: {len(data)} chunks retrieved")
 
             # Generate markdown formatted data
-            workflow_state['data_markdown'] = convert_json_to_markdown(query_result.data, "Vector Search Results")
+            workflow_state['data_markdown'] = convert_json_to_markdown(
+                workflow_state['query_result'].data,
+                "Vector Search Results"
+            )
 
-            logger.info("Vector query executed successfully")
             return workflow_state
 
         except Exception as e:
-            logger.error(f"Error in vector query: {e}")
+            logger.error(f"Error in vector query execution: {e}")
+            workflow_state['query_result'] = QueryResult(
+                database_type=DatabaseType.VECTOR,
+                data=[],
+                raw_result={"error": str(e)}
+            )
+            workflow_state['json_data'] = json.dumps([])
+            workflow_state['data_markdown'] = "# Vector Search Results\n\nError occurred during vector search."
             return workflow_state
 
     def _execute_summary_generation(self, workflow_state: Dict[str, Any], user_query: str, conversation_history: Optional[str]) -> Dict[str, Any]:
