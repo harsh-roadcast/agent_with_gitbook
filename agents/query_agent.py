@@ -1,6 +1,6 @@
 """Main query agent implementation orchestrating all components."""
 import logging
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 import json
 import dspy
 
@@ -11,11 +11,12 @@ from core.interfaces import (
     ProcessedResult, QueryResult, DatabaseType
 )
 from modules.signatures import (
-    QueryWorkflowPlanner, DatabaseSelectionSignature, EsQueryProcessor,
-    VectorQueryProcessor, SummarySignature, ChartAxisSelector
+    QueryWorkflowPlanner, DatabaseSelectionSignature,
+    SummarySignature, ChartAxisSelector
 )
-from services.search_service import execute_query, execute_vector_query, convert_json_to_markdown
+from services.search_service import convert_json_to_markdown
 from util.performance import monitor_performance
+from components.chart_generator import generate_chart_from_config
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +43,12 @@ class QueryAgent(IQueryAgent):
         # Initialize signature predictors for direct execution
         self.db_selector = dspy.Predict(DatabaseSelectionSignature)
 
-        # Configure ReAct processors with tools for function calling
-        self.es_processor = dspy.ReAct(EsQueryProcessor, tools=[execute_query, convert_json_to_markdown])
-        self.vector_processor = dspy.ReAct(VectorQueryProcessor, tools=[execute_vector_query])
+        # Remove duplicate processors - delegate to injected query_executor instead
+        # self.es_processor and self.vector_processor are handled by query_executor
 
         self.summary_generator = dspy.ChainOfThought(SummarySignature)  # Use ChainOfThought for reasoning
+
+        # Import the chart generation function and use simple Predict instead of complex ReAct
         self.chart_generator = dspy.Predict(ChartAxisSelector)
 
     def _parse_conversation_history(self, conversation_history: Optional[str]) -> Optional[List[Dict]]:
@@ -154,9 +156,15 @@ class QueryAgent(IQueryAgent):
 
                 elif step == 'EsQueryProcessor':
                     workflow_state = self._execute_es_query(workflow_state, user_query, parsed_history)
+                    # ALWAYS push markdown to frontend when ES query completes
+                    if workflow_state.get('data_markdown'):
+                        logger.info("📤 Markdown elastic result being pushed to frontend (sync)")
 
                 elif step == 'VectorQueryProcessor':
                     workflow_state = self._execute_vector_query(workflow_state, user_query, parsed_history)
+                    # ALWAYS push markdown to frontend when Vector query completes
+                    if workflow_state.get('data_markdown'):
+                        logger.info("📤 Markdown vector result being pushed to frontend (sync)")
 
                 elif step == 'SummarySignature':
                     workflow_state = self._execute_summary_generation(workflow_state, user_query, conversation_history)
@@ -184,7 +192,7 @@ class QueryAgent(IQueryAgent):
             # Fallback to original implementation
             return self._fallback_to_original_process_query(user_query, parsed_history, conversation_history)
 
-    def _execute_database_selection(self, workflow_state: Dict, user_query: str, parsed_history: Optional[List[Dict]]) -> Dict:
+    def _execute_database_selection(self, workflow_state: Dict[str, Any], user_query: str, parsed_history: Optional[List[Dict]]) -> Dict[str, Any]:
         """Execute database selection step."""
         try:
             db_result = self.db_selector(
@@ -209,99 +217,66 @@ class QueryAgent(IQueryAgent):
             workflow_state['database_type'] = DatabaseType.ELASTIC  # Default fallback
             return workflow_state
 
-    def _execute_es_query(self, workflow_state: Dict, user_query: str, parsed_history: Optional[List[Dict]]) -> Dict:
+    def _execute_es_query(self, workflow_state: Dict[str, Any], user_query: str, parsed_history: Optional[List[Dict]],
+                         session_id: Optional[str] = None, message_id: Optional[str] = None) -> Dict[str, Any]:
         """Execute Elasticsearch query step."""
         try:
-            es_result = self.es_processor(
-                user_query=user_query,
-                es_schema=self.config.es_schema,
-                conversation_history=parsed_history,
-                es_instructions=self.config.es_instructions
+            # Use the injected query_executor instead of direct processor
+            query_result = self.query_executor.execute_query(
+                DatabaseType.ELASTIC, user_query, self.config.es_schema,
+                self.config.es_instructions, parsed_history
             )
 
-            # Parse the JSON result for data processing
-            raw_data = json.loads(es_result.data_json) if es_result.data_json else {}
+            workflow_state['query_result'] = query_result
+            workflow_state['json_data'] = json.dumps(query_result.data)
 
-            # Convert to QueryResult format
-            workflow_state['query_result'] = QueryResult(
-                database_type=DatabaseType.ELASTIC,
-                data=raw_data,
-                raw_result=es_result.data_json,
-                elastic_query=es_result.elastic_query
-            )
-            workflow_state['json_data'] = es_result.data_json
+            logger.info(f"Query result: {query_result}, session_id: {session_id}, message_id: {message_id}")
+            # Store ES query in Redis if we have session and message IDs
+            if session_id and message_id and hasattr(query_result, 'elastic_query') and query_result.elastic_query:
+                from util.redis_client import store_message_query
+                store_success = store_message_query(session_id, message_id, query_result.elastic_query)
+                if store_success:
+                    logger.info(f"Stored ES query for session {session_id}, message {message_id}")
+                else:
+                    logger.warning(f"Failed to store ES query for session {session_id}, message {message_id}")
 
-            # Generate markdown formatted data if not provided by the processor
-            if hasattr(es_result, 'data_markdown') and es_result.data_markdown:
-                workflow_state['data_markdown'] = es_result.data_markdown
-            else:
-                # Fallback: convert JSON to markdown using our utility function
-                workflow_state['data_markdown'] = convert_json_to_markdown(raw_data, "Elasticsearch Query Results")
+            # Generate markdown formatted data
+            workflow_state['data_markdown'] = convert_json_to_markdown(query_result.data, "Elasticsearch Query Results")
 
             logger.info("Elasticsearch query executed successfully")
             return workflow_state
 
         except Exception as e:
             logger.error(f"Error in Elasticsearch query: {e}")
-            # Fallback to using existing query executor
-            if workflow_state.get('database_type'):
-                workflow_state['query_result'] = self.query_executor.execute_query(
-                    workflow_state['database_type'], user_query, self.config.es_schema,
-                    self.config.es_instructions, parsed_history
-                )
-                workflow_state['json_data'] = json.dumps(workflow_state['query_result'].data)
-                # Generate markdown for fallback data
-                workflow_state['data_markdown'] = convert_json_to_markdown(
-                    workflow_state['query_result'].data, "Elasticsearch Query Results"
-                )
             return workflow_state
 
-    def _execute_vector_query(self, workflow_state: Dict, user_query: str, parsed_history: Optional[List[Dict]]) -> Dict:
+    def _execute_vector_query(self, workflow_state: Dict[str, Any], user_query: str, parsed_history: Optional[List[Dict]]) -> Dict[str, Any]:
         """Execute vector query step."""
         try:
-            vector_result = self.vector_processor(
-                user_query=user_query,
-                es_schema=self.config.es_schema,
-                conversation_history=parsed_history,
-                es_instructions=self.config.es_instructions
+            # Use the injected query_executor instead of direct processor
+            query_result = self.query_executor.execute_query(
+                DatabaseType.VECTOR, user_query, self.config.es_schema,
+                self.config.es_instructions, parsed_history
             )
 
-            # Parse the JSON result for data processing
-            raw_data = json.loads(vector_result.data_json) if vector_result.data_json else {}
-
-            # Convert to QueryResult format
-            workflow_state['query_result'] = QueryResult(
-                database_type=DatabaseType.VECTOR,
-                data=raw_data,
-                raw_result=vector_result.data_json,
-                elastic_query=vector_result.elastic_query
-            )
-            workflow_state['json_data'] = vector_result.data_json
+            workflow_state['query_result'] = query_result
+            workflow_state['json_data'] = json.dumps(query_result.data)
 
             # Generate markdown formatted data
-            workflow_state['data_markdown'] = convert_json_to_markdown(raw_data, "Vector Search Results")
+            workflow_state['data_markdown'] = convert_json_to_markdown(query_result.data, "Vector Search Results")
 
             logger.info("Vector query executed successfully")
             return workflow_state
 
         except Exception as e:
             logger.error(f"Error in vector query: {e}")
-            # Fallback to using existing query executor
-            if workflow_state.get('database_type'):
-                workflow_state['query_result'] = self.query_executor.execute_query(
-                    workflow_state['database_type'], user_query, self.config.es_schema,
-                    self.config.es_instructions, parsed_history
-                )
-                workflow_state['json_data'] = json.dumps(workflow_state['query_result'].data)
-                # Generate markdown for fallback data
-                workflow_state['data_markdown'] = convert_json_to_markdown(
-                    workflow_state['query_result'].data, "Vector Search Results"
-                )
             return workflow_state
 
-    def _execute_summary_generation(self, workflow_state: Dict, user_query: str, conversation_history: Optional[str]) -> Dict:
+    def _execute_summary_generation(self, workflow_state: Dict[str, Any], user_query: str, conversation_history: Optional[str]) -> Dict[str, Any]:
         """Execute summary generation step."""
         try:
+            logger.info("🔄 Starting summary generation")
+
             summary_result = self.summary_generator(
                 user_query=user_query,
                 conversation_history=self._parse_conversation_history(conversation_history),
@@ -309,47 +284,59 @@ class QueryAgent(IQueryAgent):
             )
 
             workflow_state['summary'] = summary_result.summary
-            logger.info("Summary generated successfully")
+            logger.info("✅ Summary generation completed successfully")
             return workflow_state
 
         except Exception as e:
-            logger.error(f"Error in summary generation: {e}")
+            logger.error(f"❌ Summary generation failed: {e}")
             return workflow_state
 
-    def _execute_chart_generation(self, workflow_state: Dict, user_query: str, parsed_history: Optional[List[Dict]]) -> Dict:
-        """Execute chart generation step."""
+    def _execute_chart_generation(self, workflow_state: Dict[str, Any], user_query: str, parsed_history: Optional[List[Dict]]) -> Dict[str, Any]:
+        """Execute chart generation step - simplified approach."""
         try:
+            logger.info("🔄 Starting chart generation")
+
+            json_data = workflow_state.get('json_data', '{}')
+            logger.info(f"📊 Data available for charting: {len(str(json_data))} characters")
+
+            # Step 1: Use DSPy to determine chart parameters
             chart_result = self.chart_generator(
-                json_data=workflow_state.get('json_data', '{}'),
+                json_data=json_data,
                 user_query=user_query,
                 conversation_history=parsed_history
             )
 
-            workflow_state['chart_config'] = chart_result.highchart_config
-            # Generate HTML from chart config if needed
-            workflow_state['chart_html'] = self._generate_chart_html(chart_result.highchart_config)
+            logger.info(f"✅ Chart parameters determined: {chart_result.chart_type}")
 
-            logger.info("Chart generated successfully")
+            # Step 2: Call the simple chart generation function directly
+            from components.chart_generator import generate_highchart_config
+
+            chart_config = generate_highchart_config(
+                chart_type=chart_result.chart_type,
+                x_axis_column=chart_result.x_axis_column,
+                y_axis_column=chart_result.y_axis_column,
+                x_axis_label=chart_result.x_axis_label,
+                y_axis_label=chart_result.y_axis_label,
+                chart_title=chart_result.chart_title,
+                json_data=json_data,
+                z_axis_column=getattr(chart_result, 'z_axis_column', None),
+                z_axis_label=getattr(chart_result, 'z_axis_label', None)
+            )
+
+            # Step 3: Store chart config results (no HTML generation)
+            workflow_state['chart_config'] = chart_config
+            # Remove chart_html generation - only keep JSON config
+            workflow_state['chart_html'] = None
+
+            logger.info("✅ Chart generation completed successfully")
             return workflow_state
 
         except Exception as e:
-            logger.error(f"Error in chart generation: {e}")
+            logger.error(f"❌ Chart generation failed: {e}")
+            workflow_state['chart_config'] = None
+            workflow_state['chart_html'] = None
             return workflow_state
 
-    def _generate_chart_html(self, chart_config: Dict) -> Optional[str]:
-        """Generate HTML from chart configuration."""
-        if not chart_config:
-            return None
-
-        # Simple HTML template for Highcharts
-        html_template = f"""
-        <div id="chartContainer" style="width: 100%; height: 400px;"></div>
-        <script src="https://code.highcharts.com/highcharts.js"></script>
-        <script>
-            Highcharts.chart('chartContainer', {json.dumps(chart_config)});
-        </script>
-        """
-        return html_template
 
     def _fallback_to_original_process_query(self, user_query: str, parsed_history: Optional[List[Dict]], conversation_history: Optional[str]) -> ProcessedResult:
         """Fallback to the original process_query implementation."""
@@ -377,7 +364,8 @@ class QueryAgent(IQueryAgent):
         )
 
     @monitor_performance("query_processing_async")
-    async def process_query_async(self, user_query: str, conversation_history: Optional[str] = None):
+    async def process_query_async(self, user_query: str, conversation_history: Optional[str] = None,
+                                session_id: Optional[str] = None, message_id: Optional[str] = None):
         """
         Process query asynchronously, yielding results as they become available.
         This implementation uses the QueryWorkflowPlanner to orchestrate the workflow.
@@ -385,6 +373,8 @@ class QueryAgent(IQueryAgent):
         Args:
             user_query: The user's query string
             conversation_history: Optional conversation history for context
+            session_id: Optional session identifier for storing ES queries
+            message_id: Optional message identifier for storing ES queries
 
         Yields:
             Tuples of (field_name, field_value) as results are generated
@@ -408,14 +398,16 @@ class QueryAgent(IQueryAgent):
             yield "explanation", workflow_plan.explanation
 
             # Step 2: Execute the planned workflow asynchronously
-            async for field_name, field_value in self._execute_workflow_async(workflow_plan, user_query, parsed_history, conversation_history):
+            async for field_name, field_value in self._execute_workflow_async(
+                workflow_plan, user_query, parsed_history, conversation_history, session_id, message_id
+            ):
                 yield field_name, field_value
 
         except Exception as e:
             logger.error(f"Error in QueryAgent.process_query_async: {e}", exc_info=True)
             yield "error", str(e)
 
-    async def _execute_workflow_async(self, workflow_plan, user_query: str, parsed_history: Optional[List[Dict]], conversation_history: Optional[str]):
+    async def _execute_workflow_async(self, workflow_plan, user_query: str, parsed_history: Optional[List[Dict]], conversation_history: Optional[str], session_id: Optional[str] = None, message_id: Optional[str] = None):
         """
         Execute the planned workflow steps sequentially with async yielding.
         Results are yielded immediately when ready, without waiting for subsequent steps.
@@ -425,6 +417,8 @@ class QueryAgent(IQueryAgent):
             user_query: The user's query string
             parsed_history: Parsed conversation history
             conversation_history: Raw conversation history string
+            session_id: Optional session identifier for storing ES queries
+            message_id: Optional message identifier for storing ES queries
 
         Yields:
             Tuples of (field_name, field_value) as results are generated
@@ -466,7 +460,8 @@ class QueryAgent(IQueryAgent):
                     yield "database_selected", workflow_state['database_type'].value if workflow_state['database_type'] else None
 
                 elif step == 'EsQueryProcessor':
-                    workflow_state = self._execute_es_query(workflow_state, user_query, parsed_history)
+                    # Pass session_id and message_id to ES query execution
+                    workflow_state = self._execute_es_query(workflow_state, user_query, parsed_history, session_id, message_id)
                     # Immediately yield markdown data when ES query completes - don't wait for summary
                     if workflow_state.get('data_markdown'):
                         yield "data_markdown", workflow_state['data_markdown']
@@ -541,4 +536,3 @@ class QueryAgent(IQueryAgent):
 
         logger.warning("No previous query data found in conversation history")
         return None
-

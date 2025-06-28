@@ -1,10 +1,11 @@
+"""Query routes for handling search and query-related endpoints."""
 import asyncio
 import json
 import logging
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -12,20 +13,24 @@ from sse_starlette.sse import EventSourceResponse
 from modules.models import ActionDecider
 from services.conversation_service import conversation_service
 from services.auth_service import get_current_user
+from util.redis_client import get_message_query, get_session_message_queries
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["query"])
 
-async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any], model="LLM_TEXT_SQL"):
+async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any], model="LLM_TEXT_SQL", message_id: Optional[str] = None):
     """Generate streaming response with user context."""
     ad = ActionDecider()
     user_id = user_info.get('user_id', 'anonymous_user')
 
     logger.info(f"Processing query for user {user_id}: {query[:100]}...")
 
-    # Add user message to conversation history
-    conversation_service.add_user_message(session_id, query)
+    # Add user message to conversation history with message_id
+    if not message_id:
+        message_id = conversation_service.add_user_message(session_id, query)
+    else:
+        conversation_service.add_user_message(session_id, query, message_id)
 
     # Get conversation context for this query
     conversation_context = conversation_service.get_context_for_query(session_id)
@@ -36,10 +41,12 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
         response_data = {}
         async for field, value in ad.process_async(
             user_query=query,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            session_id=session_id,
+            message_id=message_id
         ):
             # Skip sending database and chart_config to frontend
-            if field in ["database", "chart_config"]:
+            if field in ["database"]:
                 logger.debug(f"Skipping field '{field}' - not sent to frontend")
                 # Still store for conversation history
                 response_data[field] = value
@@ -95,9 +102,12 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
             elif field == "summary":
                 content = f"**Summary:**\n{value}\n\n\n"
             elif field == "chart_html":
-                content = f"**Chart:**\n{value}\n\n\n"   # already a HTML string
+                # Send chart HTML without markdown wrapping to avoid escaping
+                content = value  # Raw HTML string
             elif field == "error":
                 content = f"**Error:**\n{value}\n\n\n"
+            elif field == "chart_config":
+                content = f"{json.dumps(value)}\n\n"
             else:
                 # For other fields (excluding database and chart_config which are filtered above)
                 content = f"**{field.capitalize()}:**\n{str(value)}\n\n\n"
@@ -197,18 +207,22 @@ async def process_query(request: Request, user_info: Dict[str, Any] = Depends(ge
 
         stream = data.get("stream", False)
         session_id = data.get("session_id", "default")
+        message_id = data.get("message_id")  # Extract message_id from API request
         model = data.get("model", "default")
         user_id = user_info.get('user_id')
 
-        logger.info(f"Received chat completion request from user {user_id} with model: {model}, stream: {stream}")
+        logger.info(f"Received chat completion request from user {user_id} with model: {model}, stream: {stream}, session_id: {session_id}, message_id: {message_id}")
 
         if stream:
-            return EventSourceResponse(generate_stream(user_message, session_id, user_info, model=model))
+            return EventSourceResponse(generate_stream(user_message, session_id, user_info, model=model, message_id=message_id))
 
         else:
             # Non-streaming: collect all results and return as one response
-            # Add user message to conversation history
-            conversation_service.add_user_message(session_id, user_message)
+            # Add user message to conversation history with message_id
+            if not message_id:
+                message_id = conversation_service.add_user_message(session_id, user_message)
+            else:
+                conversation_service.add_user_message(session_id, user_message, message_id)
 
             # Get conversation history for context
             conversation_history = conversation_service.get_conversation_history(session_id)
@@ -216,13 +230,15 @@ async def process_query(request: Request, user_info: Dict[str, Any] = Depends(ge
             ad = ActionDecider()
             result_dict = {}
 
-            # Collect all the async results into a dictionary, excluding database and chart_config
+            # Collect all the async results into a dictionary, excluding database and chart_html
             async for field, value in ad.process_async(
                 user_query=user_message,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                session_id=session_id,
+                message_id=message_id
             ):
-                # Skip database and chart_config fields for frontend
-                if field not in ["database", "chart_config"]:
+                # Skip database and chart_html fields for frontend, but include chart_config
+                if field not in ["database", "chart_html"]:
                     result_dict[field] = value
                 else:
                     logger.debug(f"Skipping field '{field}' - not sent to frontend")
@@ -258,171 +274,151 @@ async def process_query(request: Request, user_info: Dict[str, Any] = Depends(ge
         return JSONResponse(status_code=500, content={"error": f"Server error: {str(e)}"})
 
 
-# LangGraph Style API Endpoints
 
-@router.post("/v1/search")
-async def search_endpoint(request: Request):
+@router.get("/query/elasticsearch")
+async def get_elasticsearch_query(
+    session_id: str = Query(..., description="Chat session identifier"),
+    message_id: str = Query(..., description="Individual message identifier"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
-    LangGraph style search endpoint for querying and retrieving information.
+    Retrieve Elasticsearch query for a specific message from Redis, execute it in scan mode,
+    and return all data as a CSV file.
+
+    Args:
+        session_id: Chat session identifier
+        message_id: Individual message identifier
+        current_user: Authenticated user information
+
+    Returns:
+        CSV file containing all Elasticsearch query results
     """
+    import pandas as pd
+    import tempfile
+    import os
+    from fastapi.responses import FileResponse
+    from services.search_service import get_es_client
+
     try:
-        data = await request.json()
-        query = data.get("query", "")
-        limit = data.get("limit", 10)
-        filters = data.get("filters", {})
-        session_id = data.get("session_id", "search_session")
+        logger.info(f"Retrieving and executing ES query for session {session_id}, message {message_id} by user {current_user.get('user_id', 'unknown')}")
 
-        if not query:
-            return JSONResponse(status_code=400, content={"error": "Query parameter is required"})
+        # Retrieve the query from Redis
+        es_query = get_message_query(session_id, message_id)
 
-        user_id = "anonymous_user"  # Disabled auth
-        logger.info(f"Search request from user {user_id}: {query[:100]}...")
+        if es_query is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No Elasticsearch query found for session {session_id}, message {message_id}"
+            )
 
-        # Add to conversation history and get context
-        conversation_service.add_user_message(session_id, query)
-        conversation_history = conversation_service.get_conversation_history(session_id)
+        # Get Elasticsearch client
+        es_client = get_es_client()
 
-        # Use ActionDecider to process the search query
-        ad = ActionDecider()
-        search_results = []
+        # Extract query details
+        index = es_query.get('index')
+        body = es_query.get('body', {})
+        body.pop("size")  # Set size for each scroll batch
 
-        # Process the search query and collect results
-        async for field, value in ad.process_async(
-            user_query=query,
-            conversation_history=conversation_history
-        ):
-            if field == "data" and value:
-                # Limit the results based on the limit parameter
-                limited_results = value[:limit] if isinstance(value, list) else [value]
-                search_results.extend(limited_results)
-            elif field == "summary":
-                search_results.append({
-                    "type": "summary",
-                    "content": value,
-                    "relevance_score": 0.9
-                })
+        if not index:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Elasticsearch query: missing index"
+            )
 
-        response = {
-            "query": query,
-            "results": search_results,
-            "total": len(search_results),
-            "limit": limit,
-            "filters": filters,
-            "session_id": session_id,
-            "user_id": user_id,
-            "timestamp": int(time.time())
-        }
+        logger.info(f"Executing ES query in scan mode for index: {index}")
 
-        # Add response to conversation history
-        conversation_service.add_assistant_response(session_id, {"search_results": search_results})
+        # Execute query with scan mode to get all data
+        all_data = []
 
-        return JSONResponse(content=response)
+        # Use scroll/scan to get all results
+        response = es_client.search(
+            index=index,
+            body=body,
+            scroll='2m',  # Keep the scroll context alive for 2 minutes
+            size=1000,    # Process 1000 documents at a time
+            request_timeout=60
+        )
 
-    except Exception as e:
-        logger.error(f"Error in search endpoint: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"error": f"Search error: {str(e)}"})
+        scroll_id = response['_scroll_id']
+        hits = response['hits']['hits']
 
+        # Process first batch
+        for hit in hits:
+            source_data = hit.get('_source', {})
+            # Add document metadata if needed
+            source_data['_id'] = hit.get('_id')
+            source_data['_score'] = hit.get('_score')
+            all_data.append(source_data)
 
-@router.post("/v1/threads/{thread_id}/messages")
-async def add_message_to_thread(thread_id: str, request: Request):
-    """
-    Add a message to a thread and get response with conversation history.
-    """
-    try:
-        data = await request.json()
-        message = data.get("message", "")
-        stream = data.get("stream", False)
+        # Continue scrolling through all results
+        while len(hits) > 0:
+            try:
+                response = es_client.scroll(
+                    scroll_id=scroll_id,
+                    scroll='2m'
+                )
+                scroll_id = response['_scroll_id']
+                hits = response['hits']['hits']
 
-        if not message:
-            return JSONResponse(status_code=400, content={"error": "Message is required"})
+                for hit in hits:
+                    source_data = hit.get('_source', {})
+                    source_data['_id'] = hit.get('_id')
+                    source_data['_score'] = hit.get('_score')
+                    all_data.append(source_data)
 
-        user_id = "anonymous_user"  # Disabled auth
-        user_info = {"user_id": user_id}  # Create mock user_info for generate_stream
-        logger.info(f"Adding message to thread {thread_id} for user {user_id}: {message[:100]}...")
+            except Exception as scroll_error:
+                logger.warning(f"Error during scroll: {scroll_error}")
+                break
 
-        if stream:
-            # Return streaming response with conversation history
-            return EventSourceResponse(generate_stream(message, thread_id, user_info, model="LLM_TEXT_SQL"))
-        else:
-            # Non-streaming response with conversation history
-            conversation_service.add_user_message(thread_id, message)
-            conversation_history = conversation_service.get_conversation_history(thread_id)
+        # Clear the scroll context
+        try:
+            es_client.clear_scroll(scroll_id=scroll_id)
+        except Exception as clear_error:
+            logger.warning(f"Error clearing scroll: {clear_error}")
 
-            ad = ActionDecider()
-            result_dict = {}
+        if not all_data:
+            raise HTTPException(
+                status_code=404,
+                detail="No data found for the given query"
+            )
 
-            async for field, value in ad.process_async(
-                user_query=message,
-                conversation_history=conversation_history
-            ):
-                if field not in ["database", "chart_config"]:
-                    result_dict[field] = value
+        logger.info(f"Retrieved {len(all_data)} documents from Elasticsearch")
 
-            # Add response to conversation history
-            conversation_service.add_assistant_response(thread_id, result_dict)
+        # Convert to pandas DataFrame
+        df = pd.DataFrame(all_data)
 
-            response = {
-                "thread_id": thread_id,
-                "message_id": f"msg_{thread_id}_{int(time.time())}",
-                "user_id": user_id,
-                "created_at": int(time.time()),
-                "role": "assistant",
-                "content": result_dict,
-                "status": "completed"
+        # Create temporary CSV file
+        temp_dir = tempfile.gettempdir()
+        csv_filename = f"elasticsearch_query_{session_id}_{message_id}_{int(time.time())}.csv"
+        csv_path = os.path.join(temp_dir, csv_filename)
+
+        # Export to CSV
+        df.to_csv(csv_path, index=False, encoding='utf-8')
+
+        logger.info(f"Created CSV file: {csv_path} with {len(df)} rows and {len(df.columns)} columns")
+
+        # Return CSV file as response
+        return FileResponse(
+            path=csv_path,
+            filename=csv_filename,
+            media_type='text/csv',
+            headers={
+                "Content-Disposition": f"attachment; filename={csv_filename}",
+                "X-Total-Records": str(len(df)),
+                "X-Session-ID": session_id,
+                "X-Message-ID": message_id
             }
+        )
 
-            return JSONResponse(content=response)
-
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
-        logger.error(f"Error adding message to thread {thread_id}: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"error": f"Message error: {str(e)}"})
-
-
-@router.get("/v1/conversations/{session_id}")
-async def get_conversation_history(session_id: str):
-    """
-    Get conversation history for a session.
-    """
-    try:
-        history = conversation_service.get_conversation_history(session_id)
-        context = conversation_service.get_context_for_query(session_id)
-        recent_data = conversation_service.get_recent_data_context(session_id)
-
-        response = {
-            "session_id": session_id,
-            "conversation_history": history,
-            "context_summary": context,
-            "recent_data_context": recent_data,
-            "message_count": len(history),
-            "timestamp": int(time.time())
-        }
-
-        return JSONResponse(content=response)
-
-    except Exception as e:
-        logger.error(f"Error getting conversation history for {session_id}: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"error": f"Conversation history error: {str(e)}"})
-
-
-@router.delete("/v1/conversations/{session_id}")
-async def clear_conversation_history(session_id: str):
-    """
-    Clear conversation history for a session.
-    """
-    try:
-        conversation_service.clear_conversation(session_id)
-
-        response = {
-            "session_id": session_id,
-            "status": "cleared",
-            "timestamp": int(time.time())
-        }
-
-        return JSONResponse(content=response)
-
-    except Exception as e:
-        logger.error(f"Error clearing conversation history for {session_id}: {e}", exc_info=True)
-        return JSONResponse(status_code=500, content={"error": f"Clear conversation error: {str(e)}"})
+        logger.error(f"Error executing ES query and generating CSV for session {session_id}, message {message_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error while processing query: {str(e)}"
+        )
 
 
 def list_of_dicts_to_markdown_table(lst):

@@ -1,5 +1,4 @@
 import logging
-import logging
 import os
 from typing import List
 
@@ -225,54 +224,72 @@ def execute_vector_query(es_query: dict) -> dict:
         return {"error": error_msg, "query_type": "vector", "stop_processing": True}
 
 
-def convert_json_to_markdown(data: dict, title: str = "Query Results") -> str:
+def convert_json_to_markdown(data, title: str = "Query Results") -> str:
     """
-    Convert Elasticsearch JSON query results to markdown formatted table.
+    Convert JSON query results to markdown formatted table.
 
-    This function is designed to be called by LLM agents to format raw Elasticsearch
-    query results into human-readable markdown tables with proper formatting.
+    Handles both Elasticsearch format and processed data formats.
 
     Args:
-        data (dict): Elasticsearch query result dictionary containing 'hits' structure
+        data: Query result data - can be dict with 'hits' structure, list of dicts, or single dict
         title (str, optional): Title for the markdown output. Defaults to "Query Results"
 
     Returns:
         str: Formatted markdown string with table headers, data rows, and summary statistics
-
-    Example:
-        >>> es_result = {"hits": {"hits": [{"_source": {"name": "John", "age": 30}}], "total": {"value": 1}}}
-        >>> markdown = convert_json_to_markdown(es_result, "User Data")
-        >>> print(markdown)
-        # User Data
-
-        | age | name |
-        | --- | --- |
-        | 30 | John |
-
-        **Total Results**: 1 records found
-        **Displayed**: 1 records
-
-    Note:
-        - Automatically extracts all unique fields from document sources
-        - Escapes markdown special characters in data values
-        - Provides summary statistics including total and displayed record counts
-        - Returns "No results found" message for empty datasets
     """
-    if not data or not isinstance(data, dict):
-        return f"# {title}\n\nInvalid data format provided."
+    logger.info("🔄 Starting markdown generation from JSON data")
 
-    if 'hits' not in data:
-        return f"# {title}\n\nNo results found - missing 'hits' structure."
+    if not data:
+        logger.warning("⚠️ Markdown generation: No data provided")
+        return f"# {title}\n\nNo data provided."
 
-    hits = data['hits']['hits']
-    if not hits:
-        return f"# {title}\n\nNo results found."
+    # Handle different data formats
+    records = []
+    total_count = 0
 
-    # Extract all unique fields from all documents
+    # Check if it's Elasticsearch format with 'hits' structure
+    if isinstance(data, dict) and 'hits' in data:
+        hits = data['hits']['hits']
+        if not hits:
+            logger.info("⚠️ Markdown generation completed: No results found")
+            return f"# {title}\n\nNo results found."
+
+        # Extract records from Elasticsearch format
+        for hit in hits:
+            source = hit.get('_source', {})
+            if source:
+                records.append(source)
+
+        # Get total count
+        total_hits = data['hits']['total']
+        if isinstance(total_hits, dict):
+            total_count = total_hits.get('value', len(records))
+        else:
+            total_count = total_hits if total_hits else len(records)
+
+    # Handle list of dictionaries (processed data)
+    elif isinstance(data, list):
+        records = [record for record in data if isinstance(record, dict)]
+        total_count = len(records)
+
+    # Handle single dictionary
+    elif isinstance(data, dict):
+        records = [data]
+        total_count = 1
+
+    else:
+        logger.warning("❌ Markdown generation failed: Unsupported data format")
+        return f"# {title}\n\nUnsupported data format provided."
+
+    if not records:
+        logger.info("⚠️ Markdown generation completed: No valid records found")
+        return f"# {title}\n\nNo valid records found."
+
+    # Extract all unique fields from all records
     all_fields = set()
-    for hit in hits:
-        source = hit.get('_source', {})
-        all_fields.update(source.keys())
+    for record in records:
+        if isinstance(record, dict):
+            all_fields.update(record.keys())
 
     all_fields = sorted(list(all_fields))
 
@@ -287,11 +304,10 @@ def convert_json_to_markdown(data: dict, title: str = "Query Results") -> str:
         markdown += header + "\n" + separator + "\n"
 
         # Add data rows
-        for hit in hits:
-            source = hit.get('_source', {})
+        for record in records:
             row_data = []
             for field in all_fields:
-                value = source.get(field, "")
+                value = record.get(field, "")
                 # Convert to string and escape markdown special characters
                 str_value = str(value).replace("|", "\\|").replace("\n", " ")
                 row_data.append(str_value)
@@ -300,13 +316,9 @@ def convert_json_to_markdown(data: dict, title: str = "Query Results") -> str:
             markdown += row + "\n"
 
     # Add summary
-    total_hits = data['hits']['total']
-    if isinstance(total_hits, dict):
-        total_count = total_hits.get('value', 0)
-    else:
-        total_count = total_hits
-
     markdown += f"\n**Total Results**: {total_count} records found\n"
-    markdown += f"**Displayed**: {len(hits)} records\n"
+    markdown += f"**Displayed**: {len(records)} records\n"
+
+    logger.info(f"✅ Markdown generation completed successfully: {len(records)} records displayed from {total_count} total records")
 
     return markdown

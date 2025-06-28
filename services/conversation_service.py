@@ -1,10 +1,11 @@
 """Conversation history management service with Redis support."""
 import json
 import logging
+import uuid
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 
-from util.redis_client import get_redis_client, is_redis_available
+from util.redis_client import get_redis_client, is_redis_available, store_message_query, get_message_query
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,10 @@ class ConversationService:
         self._max_history_length = 10  # Maximum number of exchanges to keep
         self._session_timeout = timedelta(hours=2)  # Session timeout
         self._redis_prefix = "conversation:"  # Redis key prefix
+
+    def generate_message_id(self) -> str:
+        """Generate a unique message ID."""
+        return str(uuid.uuid4())
 
     def get_conversation_history(self, session_id: str) -> List[Dict[str, Any]]:
         """Get conversation history for a session."""
@@ -79,14 +84,29 @@ class ConversationService:
 
         return conversation.get('messages', [])
 
-    def add_user_message(self, session_id: str, message: str) -> None:
-        """Add a user message to conversation history."""
-        if self.use_redis:
-            self._add_user_message_redis(session_id, message)
-        else:
-            self._add_user_message_memory(session_id, message)
+    def add_user_message(self, session_id: str, message: str, message_id: Optional[str] = None) -> str:
+        """
+        Add a user message to conversation history.
 
-    def _add_user_message_redis(self, session_id: str, message: str) -> None:
+        Args:
+            session_id: Chat session identifier
+            message: User message content
+            message_id: Optional message ID, generates one if not provided
+
+        Returns:
+            The message ID (generated or provided)
+        """
+        if message_id is None:
+            message_id = self.generate_message_id()
+
+        if self.use_redis:
+            self._add_user_message_redis(session_id, message, message_id)
+        else:
+            self._add_user_message_memory(session_id, message, message_id)
+
+        return message_id
+
+    def _add_user_message_redis(self, session_id: str, message: str, message_id: str) -> None:
         """Add user message to Redis."""
         redis_key = f"{self._redis_prefix}{session_id}"
 
@@ -107,10 +127,11 @@ class ConversationService:
                     messages = []
                 created_at = conversation_data.get('created_at', datetime.now().isoformat())
 
-            # Add new user message
+            # Add new user message with message_id
             message_data = {
                 'role': 'user',
                 'content': message,
+                'message_id': message_id,
                 'timestamp': datetime.now().isoformat()
             }
             messages.append(message_data)
@@ -125,23 +146,25 @@ class ConversationService:
                 'last_activity': datetime.now().isoformat()
             }
 
-            self.redis_client.hset(redis_key, update_data)
+            # Use mapping parameter to set multiple fields at once
+            self.redis_client.hset(redis_key, mapping=update_data)
 
             # Set expiration on the key (session timeout)
             self.redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
 
-            logger.debug(f"Added user message to Redis conversation {session_id}")
+            logger.debug(f"Added user message to Redis conversation {session_id} with message_id {message_id}")
 
         except Exception as e:
             logger.error(f"Error adding user message to Redis for {session_id}: {e}")
 
-    def _add_user_message_memory(self, session_id: str, message: str) -> None:
+    def _add_user_message_memory(self, session_id: str, message: str, message_id: str) -> None:
         """Add user message to in-memory storage."""
         self._ensure_conversation_exists(session_id)
 
         message_data = {
             'role': 'user',
             'content': message,
+            'message_id': message_id,
             'timestamp': datetime.now().isoformat()
         }
 
@@ -149,25 +172,51 @@ class ConversationService:
         self._conversations[session_id]['last_activity'] = datetime.now()
         self._trim_conversation_history(session_id)
 
-    def add_assistant_response(self, session_id: str, response_data: Dict[str, Any]) -> None:
-        """Add assistant response to conversation history (only elastic query and database)."""
-        if self.use_redis:
-            self._add_assistant_response_redis(session_id, response_data)
-        else:
-            self._add_assistant_response_memory(session_id, response_data)
+    def add_assistant_response(self, session_id: str, response: str, message_id: Optional[str] = None,
+                              es_query: Optional[Dict] = None, user_message_id: Optional[str] = None) -> str:
+        """
+        Add an assistant response to conversation history.
 
-    def _add_assistant_response_redis(self, session_id: str, response_data: Dict[str, Any]) -> None:
+        Args:
+            session_id: Chat session identifier
+            response: Assistant response content
+            message_id: Optional response message ID, generates one if not provided
+            es_query: Optional Elasticsearch query that generated this response
+            user_message_id: Optional ID of the user message this responds to
+
+        Returns:
+            The response message ID (generated or provided)
+        """
+        if message_id is None:
+            message_id = self.generate_message_id()
+
+        if self.use_redis:
+            self._add_assistant_response_redis(session_id, response, message_id, es_query, user_message_id)
+        else:
+            self._add_assistant_response_memory(session_id, response, message_id, es_query, user_message_id)
+
+        # Store ES query in Redis if provided and user_message_id is available
+        if es_query and user_message_id:
+            store_message_query(session_id, user_message_id, es_query)
+            logger.info(f"Stored ES query for session {session_id}, message {user_message_id}")
+
+        return message_id
+
+    def _add_assistant_response_redis(self, session_id: str, response: str, message_id: str,
+                                    es_query: Optional[Dict], user_message_id: Optional[str]) -> None:
         """Add assistant response to Redis."""
         redis_key = f"{self._redis_prefix}{session_id}"
 
         # Only store elastic query and database name, nothing else
         filtered_response = {}
 
-        if 'elastic_query' in response_data:
-            filtered_response['elastic_query'] = response_data['elastic_query']
+        # Check if es_query exists before accessing its contents
+        if es_query is not None:
+            if 'elastic_query' in es_query:
+                filtered_response['elastic_query'] = es_query['elastic_query']
 
-        if 'database' in response_data:
-            filtered_response['database'] = response_data['database']
+            if 'database' in es_query:
+                filtered_response['database'] = es_query['database']
 
         # Only add to history if we have something relevant to store
         if not filtered_response:
@@ -196,6 +245,7 @@ class ConversationService:
                 'role': 'assistant',
                 'content': summary_content,
                 'query_info': filtered_response,  # Store only elastic_query and database
+                'message_id': message_id,
                 'timestamp': datetime.now().isoformat()
             }
 
@@ -211,28 +261,32 @@ class ConversationService:
                 'last_activity': datetime.now().isoformat()
             }
 
-            self.redis_client.hset(redis_key, update_data)
+            # Use mapping parameter to set multiple fields at once
+            self.redis_client.hset(redis_key, mapping=update_data)
 
             # Set expiration on the key
             self.redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
 
-            logger.debug(f"Added assistant response to Redis conversation {session_id}")
+            logger.debug(f"Added assistant response to Redis conversation {session_id} with message_id {message_id}")
 
         except Exception as e:
             logger.error(f"Error adding assistant response to Redis for {session_id}: {e}")
 
-    def _add_assistant_response_memory(self, session_id: str, response_data: Dict[str, Any]) -> None:
+    def _add_assistant_response_memory(self, session_id: str, response: str, message_id: str,
+                                      es_query: Optional[Dict], user_message_id: Optional[str]) -> None:
         """Add assistant response to in-memory storage."""
         self._ensure_conversation_exists(session_id)
 
         # Only store elastic query and database name, nothing else
         filtered_response = {}
 
-        if 'elastic_query' in response_data:
-            filtered_response['elastic_query'] = response_data['elastic_query']
+        # Check if es_query exists before accessing its contents
+        if es_query is not None:
+            if 'elastic_query' in es_query:
+                filtered_response['elastic_query'] = es_query['elastic_query']
 
-        if 'database' in response_data:
-            filtered_response['database'] = response_data['database']
+            if 'database' in es_query:
+                filtered_response['database'] = es_query['database']
 
         # Only add to history if we have something relevant to store
         if filtered_response:
@@ -243,6 +297,7 @@ class ConversationService:
                 'role': 'assistant',
                 'content': summary_content,
                 'query_info': filtered_response,  # Store only elastic_query and database
+                'message_id': message_id,
                 'timestamp': datetime.now().isoformat()
             }
 

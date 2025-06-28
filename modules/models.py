@@ -76,13 +76,16 @@ class ActionDecider(dspy.Module):
             logger.error(f"Unexpected error in ActionDecider: {e}", exc_info=True)
             return {"database": "Vector", "action": "default", "error": str(e)}
 
-    async def process_async(self, user_query: str, conversation_history: Optional[list] = None) -> AsyncGenerator[Tuple[str, Any], None]:
+    async def process_async(self, user_query: str, conversation_history: Optional[list] = None,
+                         session_id: Optional[str] = None, message_id: Optional[str] = None) -> AsyncGenerator[Tuple[str, Any], None]:
         """
         Asynchronously process a user query and yield results as they become available.
 
         Args:
             user_query: The user's query string
             conversation_history: Optional conversation history for context
+            session_id: Optional session identifier for storing ES queries
+            message_id: Optional message identifier for storing ES queries
 
         Yields:
             Tuples of (field_name, field_value) as results are generated
@@ -94,7 +97,9 @@ class ActionDecider(dspy.Module):
                 history_str = str(conversation_history) if isinstance(conversation_history, list) else conversation_history
 
             # Use modular architecture - directly iterate over the async generator
-            async for field_name, field_value in self._query_agent.process_query_async(user_query, history_str):
+            async for field_name, field_value in self._query_agent.process_query_async(
+                user_query, history_str, session_id=session_id, message_id=message_id
+            ):
                 yield field_name, field_value
 
         except Exception as e:

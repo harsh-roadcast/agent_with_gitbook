@@ -1,16 +1,10 @@
-"""Chart generation implementation using DSPy."""
-import asyncio
+"""Chart generation implementation using DSPy - cleaned up version."""
 import json
 import logging
-from typing import Dict, Optional, Tuple, List, Any
+from typing import Dict, Optional, List, Tuple
 
-import dspy
-
-from core.exceptions import ChartGenerationError
 from core.interfaces import IChartGenerator
-from modules.signatures import ChartAxisSelector
-from util.chart_utils import generate_chart_from_config
-from util.performance import monitor_performance
+from util.chart_utils import generate_chart_from_config, auto_detect_columns
 
 logger = logging.getLogger(__name__)
 
@@ -19,242 +13,208 @@ class DSPyChartGenerator(IChartGenerator):
     """DSPy-based chart generator implementation."""
 
     def __init__(self, default_chart_type: str = "column"):
-        """Initialize the chart generator with DSPy components."""
-        self.chart_selector = dspy.ChainOfThought(ChartAxisSelector)
+        """Initialize the chart generator with default chart type."""
         self.default_chart_type = default_chart_type
 
-    @monitor_performance("chart_generation")
     def generate_chart(self, data: Dict, user_query: str, conversation_history: Optional[List[Dict]] = None) -> Tuple[Optional[Dict], Optional[str]]:
-        """
-        Generate chart configuration and HTML.
-
-        Args:
-            data: Parsed JSON data from query results
-            user_query: The user's query string
-            conversation_history: Optional conversation history for context
-
-        Returns:
-            Tuple of (chart_config, chart_html) or (None, None) if generation fails
-
-        Raises:
-            ChartGenerationError: If chart generation fails
-        """
+        """Generate chart configuration and HTML."""
         try:
-            logger.info(f"Generating chart for query: {user_query}")
+            # Convert data to JSON string for processing
+            json_data = json.dumps(data) if not isinstance(data, str) else data
 
-            # Extract actual data from the hits
-            chart_data = self._extract_chart_data(data)
+            # Auto-detect chart parameters from data and query
+            chart_params = self._detect_chart_parameters(json_data, user_query)
 
-            if not chart_data:
-                logger.warning("No data available for chart generation")
+            if not chart_params:
                 return None, None
 
-            # Use DSPy to determine best chart configuration
-            result = self.chart_selector(
-                json_data=json.dumps(chart_data),
-                user_query=user_query,
-                conversation_history=conversation_history
-            )
+            # Generate chart configuration
+            chart_config = generate_highchart_config(**chart_params, json_data=json_data)
 
-            # Build the actual chart config with real data
-            chart_config = self._build_chart_config(chart_data, result, user_query)
-
-            # Generate HTML for rendering
+            # Generate HTML
             chart_html = generate_chart_from_config(chart_config)
-            logger.info("Chart generated successfully")
 
             return chart_config, chart_html
 
         except Exception as e:
-            logger.error(f"Error generating chart: {e}", exc_info=True)
-            raise ChartGenerationError(f"Failed to generate chart: {e}") from e
+            logger.error(f"Error generating chart: {e}")
+            return None, None
 
-    def _extract_chart_data(self, data: Dict) -> List[Dict[str, Any]]:
-        """Extract chart data from Elasticsearch results."""
+    async def generate_chart_async(self, data: Dict, user_query: str, conversation_history: Optional[List[Dict]] = None) -> Tuple[Optional[Dict], Optional[str]]:
+        """Generate chart asynchronously."""
+        # For now, delegate to synchronous method
+        return self.generate_chart(data, user_query, conversation_history)
+
+    def _detect_chart_parameters(self, json_data: str, user_query: str) -> Optional[Dict]:
+        """Detect chart parameters from data and query."""
         try:
-            logger.info(f"Extracting chart data from: {type(data)}")
-            logger.debug(f"Data keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+            # Parse data
+            data = json.loads(json_data) if isinstance(json_data, str) else json_data
 
-            if 'hits' in data and 'hits' in data['hits']:
-                # Extract _source data from Elasticsearch hits
+            # Extract chart data from Elasticsearch results or direct data
+            chart_data = []
+            if isinstance(data, dict) and 'hits' in data and 'hits' in data['hits']:
                 chart_data = [hit['_source'] for hit in data['hits']['hits'] if '_source' in hit]
-                logger.info(f"Extracted {len(chart_data)} items from Elasticsearch hits")
-                if chart_data:
-                    logger.debug(f"Sample data keys: {list(chart_data[0].keys())}")
-                return chart_data
             elif isinstance(data, list):
-                # Data is already a list of records
-                logger.info(f"Data is already a list with {len(data)} items")
-                return data
-            else:
-                logger.warning(f"Unexpected data format for chart: {type(data)}")
-                logger.debug(f"Data content: {str(data)[:500]}...")
-                return []
+                chart_data = data
+
+            if not chart_data:
+                return None
+
+            # Auto-detect columns
+            columns = auto_detect_columns(chart_data)
+            if not columns:
+                return None
+
+            # Simple heuristics for chart type and axes
+            chart_type = self.default_chart_type  # Use instance default
+            if "line" in user_query.lower() or "trend" in user_query.lower():
+                chart_type = "line"
+            elif "pie" in user_query.lower():
+                chart_type = "pie"
+            elif "bar" in user_query.lower():
+                chart_type = "bar"
+
+            # Use first two suitable columns
+            x_axis_column = columns[0] if len(columns) > 0 else ""
+            y_axis_column = columns[1] if len(columns) > 1 else columns[0]
+
+            return {
+                "chart_type": chart_type,
+                "x_axis_column": x_axis_column,
+                "y_axis_column": y_axis_column,
+                "x_axis_label": x_axis_column.title(),
+                "y_axis_label": y_axis_column.title(),
+                "chart_title": f"Chart: {user_query[:50]}...",
+                "z_axis_column": None,
+                "z_axis_label": None
+            }
+
         except Exception as e:
-            logger.error(f"Error extracting chart data: {e}")
-            return []
+            logger.error(f"Error detecting chart parameters: {e}")
+            return None
 
-    def _build_chart_config(self, chart_data: List[Dict], dspy_result: Any, user_query: str) -> Dict:
-        """Build the actual chart configuration with real data."""
-        try:
-            logger.info(f"Building chart config for {len(chart_data)} data items")
 
-            # Get column suggestions from DSPy with better fallbacks
-            x_column = getattr(dspy_result, 'x_axis_column', None)
-            y_column = getattr(dspy_result, 'y_axis_column', None)
-            chart_title = getattr(dspy_result, 'chart_title', f'Data Visualization for: {user_query}')
+def generate_highchart_config(chart_type: str, x_axis_column: str, y_axis_column: str,
+                             x_axis_label: str, y_axis_label: str, chart_title: str,
+                             json_data: str, z_axis_column: Optional[str] = None,
+                             z_axis_label: Optional[str] = None) -> Dict:
+    """
+    Generate Highcharts configuration from chart parameters.
 
-            # If DSPy didn't provide good columns, analyze the data to find suitable ones
-            if not x_column or not y_column or not any(x_column in item for item in chart_data):
-                logger.info("DSPy column suggestions not usable, auto-detecting columns")
-                x_column, y_column = self._auto_detect_columns(chart_data)
+    Args:
+        chart_type: Type of chart (line, column, bar, pie, etc.)
+        x_axis_column: Column name for x-axis
+        y_axis_column: Column name for y-axis
+        x_axis_label: Label for x-axis
+        y_axis_label: Label for y-axis
+        chart_title: Title for the chart
+        json_data: JSON string containing the data
+        z_axis_column: Optional column for grouping/series
+        z_axis_label: Optional label for z-axis
 
-            logger.info(f"Using columns - X: {x_column}, Y: {y_column}")
+    Returns:
+        Highcharts configuration dictionary
+    """
+    try:
+        logger.info(f"🔧 Generating {chart_type} chart: {chart_title}")
 
-            x_label = getattr(dspy_result, 'x_axis_label', x_column.replace('_', ' ').title() if x_column else 'Category')
-            y_label = getattr(dspy_result, 'y_axis_label', y_column.replace('_', ' ').title() if y_column else 'Value')
+        # Parse the JSON data
+        data = json.loads(json_data) if isinstance(json_data, str) else json_data
 
-            # Extract actual data values
-            categories = []
-            series_data = []
+        # Extract chart data from Elasticsearch results or direct data
+        chart_data = []
+        if isinstance(data, dict) and 'hits' in data and 'hits' in data['hits']:
+            chart_data = [hit['_source'] for hit in data['hits']['hits'] if '_source' in hit]
+        elif isinstance(data, list):
+            chart_data = data
+        else:
+            logger.warning(f"Unexpected data format: {type(data)}")
+            return _get_empty_chart_config(chart_title)
 
-            for item in chart_data:
-                if x_column in item and y_column in item:
-                    x_value = str(item[x_column])
-                    y_value = item[y_column]
+        if not chart_data:
+            logger.warning("No chart data available")
+            return _get_empty_chart_config(chart_title)
 
-                    # Convert y_value to number if possible
-                    try:
-                        y_value = float(y_value) if y_value is not None else 0
-                    except (ValueError, TypeError):
-                        y_value = 0
+        # Auto-detect columns if not present in data
+        if not any(x_axis_column in item for item in chart_data):
+            x_axis_column, y_axis_column = auto_detect_columns(chart_data)
+            logger.info(f"Auto-detected columns: x={x_axis_column}, y={y_axis_column}")
 
-                    categories.append(x_value)
-                    series_data.append(y_value)
+        # Extract categories and values
+        categories = []
+        values = []
 
-            logger.info(f"Extracted {len(categories)} chart data points")
+        for item in chart_data:
+            if x_axis_column in item and y_axis_column in item:
+                categories.append(str(item[x_axis_column]))
+                try:
+                    value = float(item[y_axis_column]) if item[y_axis_column] is not None else 0
+                except (ValueError, TypeError):
+                    value = 0
+                values.append(value)
 
-            # Limit to top 10 items for readability
-            if len(categories) > 10:
-                # Sort by y_value descending and take top 10
-                combined = list(zip(categories, series_data))
-                combined.sort(key=lambda x: x[1], reverse=True)
-                categories = [x[0] for x in combined[:10]]
-                series_data = [x[1] for x in combined[:10]]
-                logger.info("Limited to top 10 items")
+        # Limit to top 10 items for readability
+        if len(categories) > 10:
+            combined = list(zip(categories, values))
+            combined.sort(key=lambda x: x[1], reverse=True)
+            categories = [x[0] for x in combined[:10]]
+            values = [x[1] for x in combined[:10]]
 
-            chart_config = {
-                'chart': {'type': self.default_chart_type},
-                'title': {'text': chart_title},
-                'xAxis': {
-                    'categories': categories,
-                    'title': {'text': x_label}
-                },
-                'yAxis': {
-                    'title': {'text': y_label}
-                },
-                'series': [{
-                    'name': y_label,
-                    'data': series_data
+        # Generate chart configuration based on type
+        if chart_type.lower() == 'pie':
+            config = {
+                "chart": {"type": "pie", "height": 400},
+                "title": {"text": chart_title},
+                "series": [{
+                    "name": y_axis_label,
+                    "data": [{"name": cat, "y": val} for cat, val in zip(categories, values)]
                 }],
-                'plotOptions': {
-                    'column': {
-                        'dataLabels': {
-                            'enabled': True
-                        }
+                "plotOptions": {
+                    "pie": {
+                        "allowPointSelect": True,
+                        "cursor": "pointer",
+                        "dataLabels": {"enabled": True},
+                        "showInLegend": True
+                    }
+                }
+            }
+        else:
+            config = {
+                "chart": {"type": chart_type.lower(), "height": 400},
+                "title": {"text": chart_title},
+                "xAxis": {
+                    "categories": categories,
+                    "title": {"text": x_axis_label}
+                },
+                "yAxis": {
+                    "title": {"text": y_axis_label}
+                },
+                "series": [{
+                    "name": y_axis_label,
+                    "data": values
+                }],
+                "plotOptions": {
+                    chart_type.lower(): {
+                        "dataLabels": {"enabled": len(values) <= 10}
                     }
                 }
             }
 
-            logger.info(f"Built chart config with {len(categories)} categories and {len(series_data)} data points")
-            return chart_config
+        logger.info(f"✅ Generated chart config with {len(categories)} data points")
+        return config
 
-        except Exception as e:
-            logger.error(f"Error building chart config: {e}", exc_info=True)
-            # Return a basic chart structure
-            return {
-                'chart': {'type': self.default_chart_type},
-                'title': {'text': f'Data for: {user_query}'},
-                'xAxis': {'categories': []},
-                'yAxis': {'title': {'text': 'Values'}},
-                'series': [{'name': 'Data', 'data': []}]
-            }
+    except Exception as e:
+        logger.error(f"❌ Error generating chart config: {e}")
+        return _get_empty_chart_config(chart_title)
 
-    def _auto_detect_columns(self, chart_data: List[Dict]) -> Tuple[str, str]:
-        """Auto-detect suitable columns for X and Y axes."""
-        if not chart_data:
-            return 'category', 'value'
 
-        sample_item = chart_data[0]
-        available_keys = list(sample_item.keys())
-
-        # Look for common identifier columns for X-axis
-        x_candidates = ['device_name', 'name', 'id', 'device_id', 'title', 'label']
-        x_column = None
-        for candidate in x_candidates:
-            if candidate in available_keys:
-                x_column = candidate
-                break
-
-        # If no common identifier found, use first string column
-        if not x_column:
-            for key in available_keys:
-                if isinstance(sample_item[key], str):
-                    x_column = key
-                    break
-
-        # Look for common numeric columns for Y-axis
-        y_candidates = ['max_speed', 'speed', 'distance', 'value', 'count', 'amount', 'score']
-        y_column = None
-        for candidate in y_candidates:
-            if candidate in available_keys:
-                # Check if it's numeric
-                try:
-                    float(sample_item[candidate])
-                    y_column = candidate
-                    break
-                except (ValueError, TypeError):
-                    continue
-
-        # If no common numeric column found, use first numeric column
-        if not y_column:
-            for key in available_keys:
-                try:
-                    float(sample_item[key])
-                    y_column = key
-                    break
-                except (ValueError, TypeError):
-                    continue
-
-        # Final fallbacks
-        x_column = x_column or available_keys[0] if available_keys else 'category'
-        y_column = y_column or (available_keys[1] if len(available_keys) > 1 else available_keys[0]) if available_keys else 'value'
-
-        logger.info(f"Auto-detected columns: X={x_column}, Y={y_column} from available: {available_keys}")
-        return x_column, y_column
-
-    @monitor_performance("chart_generation_async")
-    async def generate_chart_async(self, data: Dict, user_query: str, conversation_history: Optional[List[Dict]] = None) -> Tuple[Optional[Dict], Optional[str]]:
-        """
-        Asynchronously generate chart configuration and HTML.
-
-        Args:
-            data: Parsed JSON data from query results
-            user_query: The user's query string
-            conversation_history: Optional conversation history for context
-
-        Returns:
-            Tuple of (chart_config, chart_html) or (None, None) if generation fails
-
-        Raises:
-            ChartGenerationError: If chart generation fails
-        """
-        try:
-            logger.info(f"Generating chart asynchronously for query: {user_query}")
-
-            # Use asyncio.to_thread for CPU-bound operations
-            return await asyncio.to_thread(self.generate_chart, data, user_query, conversation_history)
-
-        except Exception as e:
-            logger.error(f"Error generating chart asynchronously: {e}", exc_info=True)
-            raise ChartGenerationError(f"Failed to generate chart asynchronously: {e}") from e
+def _get_empty_chart_config(title: str) -> Dict:
+    """Return a basic empty chart configuration."""
+    return {
+        "chart": {"type": "column", "height": 400},
+        "title": {"text": title},
+        "xAxis": {"categories": []},
+        "yAxis": {"title": {"text": "Values"}},
+        "series": [{"name": "No Data", "data": []}]
+    }
