@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from typing import List
 from elasticsearch import Elasticsearch
 from sentence_transformers import SentenceTransformer
@@ -27,6 +28,8 @@ def get_sentence_transformer_model():
 
 def execute_query(es_query: dict, index: str) -> dict:
     """Execute a standard Elasticsearch query"""
+    start_time = time.time()
+    logger.info(f"🔍 [TIMING] Starting ES query execution at {start_time}")
     logger.info(f"Executing standard ES query on index '{index}': {es_query}")
 
     # Remove any size parameters and force to 25
@@ -39,14 +42,21 @@ def execute_query(es_query: dict, index: str) -> dict:
     logger.info(f"Executing query on index: {index}")
 
     try:
+        query_start = time.time()
         result = es_client.search(index=index, body=query_body, size=max_size, request_timeout=30)
+        query_end = time.time()
+
         total_hits = result.get('hits', {}).get('total', {})
         if isinstance(total_hits, dict):
             total_count = total_hits.get('value', 0)
         else:
             total_count = total_hits
 
-        logger.info(f"ES query successful - found {total_count} results on index {index}")
+        logger.info(f"⚡ [TIMING] ES query completed in {(query_end - query_start) * 1000:.2f}ms - found {total_count} results on index {index}")
+
+        end_time = time.time()
+        logger.info(f"🏁 [TIMING] Total execute_query function took {(end_time - start_time) * 1000:.2f}ms")
+
         return {"success": True, "result": result, "query_type": "standard"}
     except Exception as e:
         logger.error(f"Error executing query on index {index}: {e}")

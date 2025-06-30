@@ -2,6 +2,7 @@
 import logging
 from typing import Optional, List, Dict, Any
 import json
+import time
 import dspy
 
 from core.config import config_manager
@@ -513,11 +514,33 @@ class QueryAgent(IQueryAgent):
 
                 elif step == 'EsQueryProcessor':
                     # Pass session_id and message_id to ES query execution
+                    es_start = time.time()
+                    logger.info(f"🚀 [TIMING] Starting EsQueryProcessor step at {es_start}")
+
                     workflow_state = self._execute_es_query(workflow_state, user_query, parsed_history, session_id, message_id)
-                    # Immediately yield markdown data when ES query completes - don't wait for summary
-                    if workflow_state.get('data_markdown'):
-                        yield "data_markdown", workflow_state['data_markdown']
-                        logger.info("ES query markdown data yielded immediately to frontend")
+
+                    es_end = time.time()
+                    logger.info(f"🏁 [TIMING] EsQueryProcessor step completed in {(es_end - es_start) * 1000:.2f}ms")
+
+                    # Immediately yield ALL ES data when query completes - don't wait for summary
+                    if workflow_state.get('query_result'):
+                        yield_start = time.time()
+
+                        # Yield raw JSON data first
+                        if workflow_state['json_data']:
+                            yield "data", json.loads(workflow_state['json_data']) if isinstance(workflow_state['json_data'], str) else workflow_state['json_data']
+                            logger.info("🚀 [TIMING] ES query raw data yielded immediately to frontend")
+
+                        # Yield markdown formatted data
+                        if workflow_state.get('data_markdown'):
+                            yield "data_markdown", workflow_state['data_markdown']
+                            logger.info("🚀 [TIMING] ES query markdown data yielded immediately to frontend")
+
+                        # Yield database type for frontend reference
+                        yield "database", workflow_state['query_result'].database_type.value
+
+                        yield_end = time.time()
+                        logger.info(f"✅ [TIMING] ES data yielding completed in {(yield_end - yield_start) * 1000:.2f}ms - ES data pushed to frontend before summary processing")
 
                 elif step == 'VectorQueryProcessor':
                     workflow_state = self._execute_vector_query(workflow_state, user_query, parsed_history)

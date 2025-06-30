@@ -1,6 +1,7 @@
 """Query execution implementation using DSPy agents."""
 import json
 import logging
+import time
 from typing import Any, Optional, List, Dict
 
 import dspy
@@ -20,7 +21,8 @@ class DSPyQueryExecutor(IQueryExecutor):
     def __init__(self):
         """Initialize the query executor with DSPy agents."""
         self.vector_agent = dspy.ReAct(VectorQueryProcessor, tools=[execute_vector_query])
-        self.es_agent = dspy.ReAct(EsQueryProcessor, tools=[execute_query])
+        # Replace ReAct with simple Predict for ES queries - ReAct is causing 60+ second delays
+        self.es_agent = dspy.Predict(EsQueryProcessor)
 
     @monitor_performance("query_execution")
     def execute_query(self, database_type: DatabaseType, user_query: str, schema: str, instructions: str, conversation_history: Optional[List[Dict]] = None) -> QueryResult:
@@ -67,16 +69,70 @@ class DSPyQueryExecutor(IQueryExecutor):
 
     def _execute_elastic_query(self, user_query: str, schema: str, instructions: str, conversation_history: Optional[List[Dict]] = None) -> QueryResult:
         """Execute Elasticsearch query."""
+        start_time = time.time()
+        logger.info(f"🚀 [TIMING] Starting DSPy ES agent processing at {start_time}")
         logger.info(f"Processing Elasticsearch query for: {user_query}")
 
+        agent_start = time.time()
+        # Use Predict to generate query parameters
         result = self.es_agent(
             user_query=user_query,
             es_schema=schema,
             es_instructions=instructions,
             conversation_history=conversation_history
         )
+        agent_end = time.time()
+        logger.info(f"🤖 [TIMING] DSPy ES agent completed in {(agent_end - agent_start) * 1000:.2f}ms")
 
-        return self._parse_query_result(result, DatabaseType.ELASTIC)
+        # Manually execute the query since we're not using ReAct anymore
+        exec_start = time.time()
+        try:
+            # Extract query and index from the result
+            elastic_query = result.elastic_query
+            index_name = result.index_name
+
+            logger.info(f"📝 Generated query for index '{index_name}': {elastic_query}")
+
+            # Call execute_query manually
+            query_result = execute_query(elastic_query, index_name)
+
+            if query_result.get('success'):
+                # Extract the actual response data from ObjectApiResponse
+                es_response = query_result['result']
+
+                # Convert ObjectApiResponse to dict if needed
+                if hasattr(es_response, 'body'):
+                    response_dict = es_response.body
+                elif hasattr(es_response, 'to_dict'):
+                    response_dict = es_response.to_dict()
+                else:
+                    # If it's already a dict, use it directly
+                    response_dict = dict(es_response)
+
+                # Manually populate data_json with the extracted dict
+                result.data_json = json.dumps(response_dict)
+                logger.info(f"✅ Successfully extracted {len(response_dict.get('hits', {}).get('hits', []))} records from ES response")
+            else:
+                logger.error(f"Query execution failed: {query_result}")
+                result.data_json = json.dumps({"hits": {"hits": []}})
+
+        except Exception as e:
+            logger.error(f"Error executing query manually: {e}", exc_info=True)
+            result.data_json = json.dumps({"hits": {"hits": []}})
+
+        exec_end = time.time()
+        logger.info(f"⚡ [TIMING] Manual query execution completed in {(exec_end - exec_start) * 1000:.2f}ms")
+
+        parse_start = time.time()
+        parsed_result = self._parse_query_result(result, DatabaseType.ELASTIC)
+        parse_end = time.time()
+
+        logger.info(f"📊 [TIMING] Result parsing completed in {(parse_end - parse_start) * 1000:.2f}ms")
+
+        end_time = time.time()
+        logger.info(f"🏁 [TIMING] Total _execute_elastic_query took {(end_time - start_time) * 1000:.2f}ms")
+
+        return parsed_result
 
     def _parse_query_result(self, result: Any, database_type: DatabaseType) -> QueryResult:
         """Parse query result into standardized format."""

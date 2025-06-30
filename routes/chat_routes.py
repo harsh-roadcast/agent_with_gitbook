@@ -19,6 +19,9 @@ router = APIRouter(tags=["chat"])
 
 async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any], model="LLM_TEXT_SQL", message_id: Optional[str] = None):
     """Generate streaming response with user context."""
+    stream_start = time.time()
+    logger.info(f"🌊 [TIMING] Starting stream generation at {stream_start}")
+
     ad = ActionDecider()
     user_id = user_info.get('user_id', 'anonymous_user')
 
@@ -34,6 +37,10 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
 
     response_data = {}
     assistant_response_stored = False
+    es_data_sent = False
+
+    async_start = time.time()
+    logger.info(f"🚀 [TIMING] Starting async processing at {async_start}")
 
     async for field, value in ad.process_async(
         user_query=query,
@@ -41,12 +48,55 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
         session_id=session_id,
         message_id=message_id
     ):
-        if field in ["database"]:
+        field_received_time = time.time()
+        logger.info(f"📦 [TIMING] Received field '{field}' at {field_received_time} ({(field_received_time - stream_start) * 1000:.2f}ms from start)")
+
+        # Store all response data
+        response_data[field] = value
+
+        # Skip certain fields from being sent to frontend immediately
+        if field in []:
             logger.debug(f"Skipping field '{field}' - not sent to frontend")
-            response_data[field] = value
             continue
 
-        response_data[field] = value
+        # Handle ES data fields - send immediately when available
+        if field in ["data", "data_markdown"]:
+            logger.info(f"📤 [TIMING] Processing {field} for immediate frontend send")
+
+            # Format the content based on field type
+            if field == "data":
+                # Don't send raw data to frontend, only markdown
+                continue
+            elif field == "data_markdown":
+                content = f"{value}\n\n"
+                es_data_sent = True
+            else:
+                content = f"**{field.capitalize()}:**\n{str(value)}\n\n\n"
+
+            sse_start = time.time()
+            response = {
+                "id": f"chatcmpl-{session_id}-{time.time()}",
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "content": content,
+                            "field": field,
+                        },
+                        "finish_reason": None
+                    }
+                ],
+                "user_id": user_id
+            }
+            yield f"event: delta\n"
+            yield f"data: {json.dumps(response)}\n\n"
+            sse_end = time.time()
+            logger.info(f"✅ [TIMING] SSE message sent for {field} in {(sse_end - sse_start) * 1000:.2f}ms")
+            await asyncio.sleep(0.1)
+            continue
 
         # Check for validation errors that should stop processing
         if field == "error":
@@ -86,20 +136,27 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
                 yield "data: [DONE]\n\n"
                 return
 
-        # Format the content based on field type
+        # Format the content based on field type for other fields
         if field == "elastic_query":
             content = f"**Elasticsearch Query:**\n{value}\n\n\n"
-        elif field == "data_markdown":
-            content = f"{value}\n\n"
         elif field == "summary":
+            summary_time = time.time()
+            logger.info(f"📝 [TIMING] Summary received at {summary_time} ({(summary_time - stream_start) * 1000:.2f}ms from start)")
             content = f"**Summary:**\n{value}\n\n\n"
         elif field == "chart_config":
             content = f"{json.dumps(value)}\n\n"
         elif field == "error":
             content = f"**Error:**\n{value}\n\n\n"
+        elif field == "database":
+            # Send database info to frontend
+            content = f"**Database Selected:**\n{value}\n\n\n"
+        elif field == "completed":
+            # Skip completed status - not needed in frontend
+            continue
         else:
             content = f"**{field.capitalize()}:**\n{str(value)}\n\n\n"
 
+        sse_start = time.time()
         response = {
             "id": f"chatcmpl-{session_id}-{time.time()}",
             "object": "chat.completion.chunk",
@@ -119,6 +176,8 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
         }
         yield f"event: delta\n"
         yield f"data: {json.dumps(response)}\n\n"
+        sse_end = time.time()
+        logger.info(f"✅ [TIMING] SSE message sent for {field} in {(sse_end - sse_start) * 1000:.2f}ms")
         await asyncio.sleep(0.1)
 
     # Add complete response to conversation history
@@ -127,6 +186,9 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
         logger.info(f"Stored complete assistant response for session {session_id}, message {message_id}")
 
     # Final [DONE] chunk
+    final_time = time.time()
+    logger.info(f"🏁 [TIMING] Stream completed at {final_time} - total time: {(final_time - stream_start) * 1000:.2f}ms")
+
     response = {
         "id": f"chatcmpl-{session_id}-{time.time()}",
         "object": "chat.completion.chunk",
