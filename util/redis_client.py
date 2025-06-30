@@ -69,3 +69,9 @@ def get_index_schema() -> Dict[str, Any]:
         return schema_data.get("INDEX_SCHEMA", {})
     return {}
 
+
+def delete_index_schema() -> None:
+    """Delete index schema from Redis."""
+    redis_client.delete("elasticsearch:index_schema")
+    logger.info("Deleted index schema from Redis cache")
+

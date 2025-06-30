@@ -4,7 +4,7 @@ import logging
 from typing import Dict, List
 
 from services.search_service import es_client
-from util.redis_client import redis_client, store_index_schema, get_index_schema
+from util.redis_client import redis_client, store_index_schema, get_index_schema, delete_index_schema
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ def initialize_index_schema() -> bool:
     existing_schema = get_index_schema()
     if existing_schema:
         logger.info(f"Found existing index schema in Redis with {len(existing_schema)} indices")
-        return True
+        delete_index_schema()
 
     index_schema = fetch_all_index_mappings()
     if index_schema:
