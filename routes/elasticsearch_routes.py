@@ -38,9 +38,9 @@ async def get_elasticsearch_query_csv(
     try:
         logger.info(f"Executing ES query for session {session_id}, message {message_id}")
 
-        # Retrieve the query from Redis
-        es_query = get_message_query(session_id, message_id)
-        if es_query is None:
+        # Retrieve the query from Redis (new format with es_query and index_name)
+        query_data = get_message_query(session_id, message_id)
+        if not query_data:
             raise HTTPException(
                 status_code=404,
                 detail=f"No Elasticsearch query found for session {session_id}, message {message_id}"
@@ -49,27 +49,28 @@ async def get_elasticsearch_query_csv(
         # Get Elasticsearch client
         es_client = get_es_client()
 
-        # Extract query details
-        index = es_query.get('index')
-        body = es_query.get('body', {})
+        # Extract query and index from the new storage format
+        es_query = query_data.get('es_query')
+        index_name = query_data.get('index_name')
 
-        if not index:
+        if not es_query or not index_name:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid Elasticsearch query: missing index"
+                detail="Invalid query data: missing es_query or index_name"
             )
 
         # Remove size limit for full data extraction
-        body.pop('size', None)
+        query_body = es_query.copy()
+        query_body.pop('size', None)
 
-        logger.info(f"Executing ES query in scan mode for index: {index}")
+        logger.info(f"Executing ES query in scan mode for index: {index_name}")
 
         # Execute query with scroll to get all data
         all_data = []
 
         response = es_client.search(
-            index=index,
-            body=body,
+            index=index_name,
+            body=query_body,
             scroll='2m',
             size=1000,
             request_timeout=60
@@ -135,7 +136,8 @@ async def get_elasticsearch_query_csv(
                 "Content-Disposition": f"attachment; filename={csv_filename}",
                 "X-Total-Records": str(len(df)),
                 "X-Session-ID": session_id,
-                "X-Message-ID": message_id
+                "X-Message-ID": message_id,
+                "X-Index-Name": index_name
             }
         )
 

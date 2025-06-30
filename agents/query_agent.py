@@ -259,7 +259,7 @@ class QueryAgent(IQueryAgent):
             # Store ES query in Redis if we have session and message IDs
             if session_id and message_id and hasattr(query_result, 'elastic_query') and query_result.elastic_query:
                 from util.redis_client import store_message_query
-                store_success = store_message_query(session_id, message_id, query_result.elastic_query)
+                store_success = store_message_query(session_id, message_id, query_result.elastic_query, query_result.index_name)
                 if store_success:
                     logger.info(f"Stored ES query for session {session_id}, message {message_id}")
                 else:

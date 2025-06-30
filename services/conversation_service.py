@@ -138,7 +138,20 @@ class ConversationService:
 
         # Store ES query if provided
         if es_query and user_message_id:
-            store_message_query(session_id, user_message_id, es_query)
+            # Extract index name from es_query if available, otherwise use default
+            index_name = "unknown"  # Default fallback
+            if isinstance(es_query, dict):
+                # Try to extract index from various possible locations in the query
+                if 'index' in es_query:
+                    index_name = es_query['index']
+                elif 'index_name' in es_query:
+                    index_name = es_query['index_name']
+                else:
+                    # If no index specified, try to infer from query structure
+                    # For vehicle queries, use the most common index
+                    index_name = "vehicle_summary_llm_chatbot"
+
+            store_message_query(session_id, user_message_id, es_query, index_name)
 
         logger.debug(f"Added assistant response to conversation {session_id} with message_id {message_id}")
         return message_id

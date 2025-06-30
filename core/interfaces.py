@@ -18,6 +18,7 @@ class QueryResult:
     data: List[Dict[str, Any]]
     raw_result: Any
     elastic_query: Optional[Dict] = None
+    index_name: Optional[str] = None  # Add index name directly to QueryResult
     error: Optional[str] = None
 
 

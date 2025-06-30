@@ -136,7 +136,6 @@ class DSPyQueryExecutor(IQueryExecutor):
 
     def _parse_query_result(self, result: Any, database_type: DatabaseType) -> QueryResult:
         """Parse query result into standardized format."""
-
         try:
             if not hasattr(result, 'data_json'):
                 raise DataParsingError("Result missing data_json attribute")
@@ -154,14 +153,16 @@ class DSPyQueryExecutor(IQueryExecutor):
                 logger.warning(f"Could not extract source data: {e}")
                 data = []
 
-            # Get elastic query if available
-            elastic_query = getattr(result, 'elastic_query', None)
+            # Get elastic query and index name directly from result - LLM always provides these
+            elastic_query = result.elastic_query if hasattr(result, 'elastic_query') else None
+            index_name = result.index_name if hasattr(result, 'index_name') else None
 
             return QueryResult(
                 database_type=database_type,
                 data=data,
                 raw_result=data_json,
-                elastic_query=elastic_query
+                elastic_query=elastic_query,
+                index_name=index_name
             )
 
         except json.JSONDecodeError as e:
