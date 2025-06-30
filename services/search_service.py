@@ -25,23 +25,32 @@ def get_sentence_transformer_model():
     """Returns the global sentence transformer model instance."""
     return sentence_model
 
-def execute_query(es_query: dict) -> dict:
+def execute_query(es_query: dict, index: str) -> dict:
     """Execute a standard Elasticsearch query"""
-    logger.info(f"Executing standard ES query: {es_query}")
-
-    index = es_query.get('index')
-    body = es_query.get('body', {})
+    logger.info(f"Executing standard ES query on index '{index}': {es_query}")
 
     # Remove any size parameters and force to 25
-    if 'size' in body:
-        body.pop('size')
+    query_body = es_query.copy()
+    if 'size' in query_body:
+        query_body.pop('size')
 
     max_size = 25
     logger.info(f"Enforcing maximum result limit of {max_size} records")
+    logger.info(f"Executing query on index: {index}")
 
-    result = es_client.search(index=index, body=body, size=max_size, request_timeout=30)
-    logger.info(f"ES query successful - found {result.get('hits', {}).get('total', {}).get('value', 0)} results")
-    return {"success": True, "result": result, "query_type": "standard"}
+    try:
+        result = es_client.search(index=index, body=query_body, size=max_size, request_timeout=30)
+        total_hits = result.get('hits', {}).get('total', {})
+        if isinstance(total_hits, dict):
+            total_count = total_hits.get('value', 0)
+        else:
+            total_count = total_hits
+
+        logger.info(f"ES query successful - found {total_count} results on index {index}")
+        return {"success": True, "result": result, "query_type": "standard"}
+    except Exception as e:
+        logger.error(f"Error executing query on index {index}: {e}")
+        raise
 
 def generate_embedding(text: str) -> List[float]:
     """Generate an embedding vector for the given text."""

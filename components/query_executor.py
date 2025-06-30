@@ -80,7 +80,7 @@ class DSPyQueryExecutor(IQueryExecutor):
 
     def _parse_query_result(self, result: Any, database_type: DatabaseType) -> QueryResult:
         """Parse query result into standardized format."""
-        logger.info(f"Parsing query result: {result}")
+
         try:
             if not hasattr(result, 'data_json'):
                 raise DataParsingError("Result missing data_json attribute")

@@ -53,7 +53,7 @@ class QueryWorkflowPlanner(dspy.Signature):
     requires_summary: bool = dspy.OutputField(desc="Always True - summary is always generated for every query")
     requires_visualization: bool = dspy.OutputField(desc="Whether the user explicitly asked for a chart, graph, visualization, or plot in their query")
     is_modification_request: bool = dspy.OutputField(desc="Whether this is a request to modify a previous query")
-    is_followup_visualization: bool = dspy.OutputField(desc="Whether this is a follow-up request to visualize previously retrieved data (e.g., 'show in scatter graph' after data query)")
+    is_followup_visualization: bool = dspy.OutputField(desc="Whether this is a follow-up request to visualize previously retrieved data (e.g., 'show in scatter graph' after a data query)")
     modification_type: Optional[Literal['query_change', 'new_chart', 'chart_modification', 'followup_visualization']] = dspy.OutputField(
         desc="Type of modification if this is a modification request. Use 'followup_visualization' for requests to visualize previous data", default=None
     )
@@ -122,8 +122,9 @@ class EsQueryProcessor(dspy.Signature):
     es_instructions = dspy.InputField(desc="Elasticsearch query instructions")
 
     # ReAct outputs for reasoning and action
-    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about what query to construct and execute, including which specific fields are needed for this query")
+    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about what query to construct and execute, including which specific fields are needed for this query and which index to target")
     selected_fields: List[str] = dspy.OutputField(desc="List of specific field names that are relevant to the user's query and should be included in the _source parameter. Only include fields the user explicitly asked for or are needed to answer their question.")
+    index_name: str = dspy.OutputField(desc="Name of the Elasticsearch index to query based on the user's request and available schema")
     elastic_query: dict = dspy.OutputField(desc="Generated Elastic query with only top 25 rows and ONLY the relevant fields specified in selected_fields in the _source parameter")
     data_json: str = dspy.OutputField(desc="Raw results as JSON retrieved from function call")
     data_markdown: str = dspy.OutputField(desc="Results formatted in markdown format with proper tables, headers, and structure for better readability")
