@@ -1,5 +1,6 @@
 """Simplified authentication utilities for JWT token handling."""
 import logging
+from calendar import month
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
@@ -7,6 +8,7 @@ import jwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sympy.physics.units import years
 
 from core.config import config_manager
 
@@ -26,7 +28,7 @@ class JWTAuthenticator:
 
     def create_token(self, user_id: str = "admin", username: str = "admin") -> str:
         """Create a JWT access token."""
-        expire = datetime.now(timezone.utc) + timedelta(hours=24)  # 24 hour token
+        expire = datetime.now(timezone.utc) + timedelta(days=365)  # 24 hour token
 
         payload = {
             "user_id": user_id,
