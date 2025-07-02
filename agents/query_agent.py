@@ -127,7 +127,8 @@ class QueryAgent(IQueryAgent):
             user_query=user_query,
             schema=self.config.es_schema,
             instructions=self.config.es_instructions,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            detailed_analysis=detailed_analysis  # Pass the actual detailed_analysis from ThinkingSignature
         )
 
         # Convert to markdown
@@ -144,7 +145,8 @@ class QueryAgent(IQueryAgent):
             user_query=user_query,
             schema=self.config.es_schema,
             instructions=self.config.es_instructions,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            detailed_analysis=detailed_analysis  # Pass the actual detailed_analysis from ThinkingSignature
         )
 
         # Convert to markdown
