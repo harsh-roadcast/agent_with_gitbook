@@ -1,14 +1,11 @@
 """Simplified authentication utilities for JWT token handling."""
 import logging
-from calendar import month
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 import jwt
-from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
-from fastapi import HTTPException, status, Depends
+from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sympy.physics.units import years
 
 from core.config import config_manager
 

@@ -1,6 +1,8 @@
 import logging
 from typing import List, Dict, Any, Optional
+
 from elasticsearch.helpers import bulk
+
 from services.search_service import es_client
 
 logger = logging.getLogger(__name__)

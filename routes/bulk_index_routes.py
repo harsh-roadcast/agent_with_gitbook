@@ -2,7 +2,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, validator
 
 from services.auth_service import get_current_user

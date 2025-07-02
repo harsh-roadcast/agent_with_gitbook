@@ -2,9 +2,9 @@
 from unittest.mock import Mock
 
 import pytest
+from core.container import DIContainer
 
 from agents.query_agent import QueryAgent
-from core.container import DIContainer
 from core.interfaces import DatabaseType, QueryResult, ProcessedResult
 
 

@@ -1,6 +1,7 @@
 """Metadata search service for checking vector store content."""
 import logging
 from typing import List, Dict, Any
+
 from services.search_service import get_es_client
 
 logger = logging.getLogger(__name__)

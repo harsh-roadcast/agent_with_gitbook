@@ -3,7 +3,7 @@ import logging
 import time
 from typing import Dict, Any
 
-from fastapi import APIRouter, Query, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from services.auth_service import get_current_user

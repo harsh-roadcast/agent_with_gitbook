@@ -1,8 +1,9 @@
 """Document processing background tasks."""
 import logging
-import tempfile
 import os
+import tempfile
 from typing import Dict, Any
+
 from celery import current_task
 
 from celery_app import celery_app

@@ -1,8 +1,10 @@
 """Simple query agent that executes workflow plan dynamically."""
-import logging
 import json
+import logging
+
 import dspy
 
+from components.chart_generator import generate_highchart_config
 from core.exceptions import DSPyAgentException
 from core.interfaces import IQueryAgent, ProcessedResult, QueryResult, DatabaseType
 from modules.signatures import (
@@ -11,7 +13,6 @@ from modules.signatures import (
 )
 from services.metadata_search_service import search_vector_metadata
 from services.search_service import convert_json_to_markdown
-from components.chart_generator import generate_highchart_config
 from util.chart_utils import generate_chart_from_config
 from util.performance import monitor_performance
 

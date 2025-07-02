@@ -1,13 +1,10 @@
 """Search and query processing routes."""
-import json
 import logging
 import time
-from typing import Dict, Any
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from modules.models import ActionDecider
 from services.conversation_service import conversation_service
 
 logger = logging.getLogger(__name__)

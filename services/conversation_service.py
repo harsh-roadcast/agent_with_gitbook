@@ -1,8 +1,8 @@
 """Conversation history management service with Redis support."""
 import json
 import logging
-from typing import Dict, List, Any
 from datetime import datetime, timedelta
+from typing import Dict, List, Any
 
 from util.redis_client import redis_client, store_message_query
 

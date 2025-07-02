@@ -1,5 +1,6 @@
 """Celery configuration for background task processing."""
 import os
+
 from celery import Celery
 
 # Celery configuration

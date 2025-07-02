@@ -1,10 +1,11 @@
 """Simple document processing service using Docling exclusively."""
 
 import logging
-from typing import List, Dict, Any
 from datetime import datetime
+from typing import List, Dict, Any
 
 import torch
+
 torch.set_default_device("cpu")
 
 import dspy

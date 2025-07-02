@@ -4,9 +4,9 @@ import tempfile
 from unittest.mock import Mock, patch
 
 import pytest
+from core.container import DIContainer
 
 from core.config import AppConfig, ElasticsearchConfig, ModelConfig
-from core.container import DIContainer
 
 
 @pytest.fixture

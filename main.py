@@ -3,8 +3,8 @@ import pathlib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 # Import all the new separated route modules
 from routes import (
@@ -17,9 +17,9 @@ from routes import (
     document_routes,
     bulk_index_routes
 )
+from services.auth_service import generate_startup_token
 from services.llm_service import init_llm
 from services.mapping_service import initialize_index_schema
-from services.auth_service import generate_startup_token
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

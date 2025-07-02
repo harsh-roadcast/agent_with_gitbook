@@ -1,6 +1,7 @@
 """Bulk indexing background tasks."""
 import logging
 from typing import Dict, Any, List
+
 from celery import current_task
 
 from celery_app import celery_app

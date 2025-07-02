@@ -1,18 +1,17 @@
 """Elasticsearch query management routes."""
-import json
 import logging
 import os
-import pandas as pd
 import tempfile
 import time
 from typing import Dict, Any
 
+import pandas as pd
 from fastapi import APIRouter, Query, HTTPException, Depends
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse
 
 from services.auth_service import get_current_user
 from services.search_service import get_es_client
-from util.redis_client import get_message_query, get_session_message_queries
+from util.redis_client import get_message_query
 
 logger = logging.getLogger(__name__)
 

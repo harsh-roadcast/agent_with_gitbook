@@ -1,9 +1,8 @@
 """Service for aggregating and managing document metadata for informed query decisions."""
 
-import logging
 import json
-from typing import Dict, List, Any, Optional
-from collections import defaultdict
+import logging
+from typing import Dict, List, Any
 
 from services.search_service import get_es_client
 

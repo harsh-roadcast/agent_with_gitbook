@@ -1,10 +1,9 @@
 """Service for managing Elasticsearch index mappings in Redis."""
-import json
 import logging
 from typing import Dict, List
 
 from services.search_service import es_client
-from util.redis_client import redis_client, store_index_schema, get_index_schema, delete_index_schema
+from util.redis_client import store_index_schema, get_index_schema, delete_index_schema
 
 logger = logging.getLogger(__name__)
 

@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from typing import List
+
 from elasticsearch import Elasticsearch
 from sentence_transformers import SentenceTransformer
 

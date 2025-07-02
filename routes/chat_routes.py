@@ -9,9 +9,8 @@ from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
-from modules.models import ActionDecider
-from services.conversation_service import conversation_service
 from services.auth_service import get_current_user
+from services.conversation_service import conversation_service
 
 logger = logging.getLogger(__name__)
 
