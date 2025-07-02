@@ -26,39 +26,48 @@ class QueryWorkflowPlanner(dspy.Signature):
 
     Logic:
     - If metadata_found = True: Use VectorQueryProcessor (semantic search on found documents)
-    - If metadata_found = False: Use EsQueryProcessor (regular Elasticsearch search)
-    Both vector and regular data are in the same Elasticsearch index.
+    - If metadata_found = False: Check if es_schema contains relevant indices/columns that can fulfill the user query
+      - If es_schema has relevant data: Use EsQueryProcessor (regular Elasticsearch search)
+      - If es_schema does NOT have relevant data: Skip query processors, go directly to SummarySignature
+    - If neither query processor is suitable: Skip both and use only SummarySignature
+    - Always consider if ChartGenerator is needed based on user request
+
+    IMPORTANT: Only use EsQueryProcessor if the es_schema actually contains indices and columns that are relevant to the user's query.
+    For queries about weather, external APIs, current events, or topics not in the schema, skip query processors entirely.
     """
     user_query: str = dspy.InputField(desc="User's original question")
     detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
-    metadata_found: bool = dspy.InputField(desc="Whether vector metadata was found - if True use VectorQueryProcessor, if False use EsQueryProcessor")
+    metadata_found: bool = dspy.InputField(desc="Whether vector metadata was found - if True consider VectorQueryProcessor, if False check es_schema relevance")
     metadata_summary: str = dspy.InputField(desc="Summary of metadata search results")
-    es_schema: str = dspy.InputField(desc="Available Elasticsearch schema")
+    es_schema: str = dspy.InputField(desc="Available Elasticsearch schema with indices and columns - CAREFULLY CHECK if this schema contains data relevant to the user query")
     conversation_history: Optional[List[Dict]] = dspy.InputField(
         desc="Previous conversation messages for context",
         default=None
     )
 
-    workflow_plan: List[str] = dspy.OutputField(desc="Ordered list of signatures to execute: If metadata_found=True use ['VectorQueryProcessor', 'SummarySignature'], if metadata_found=False use ['EsQueryProcessor', 'SummarySignature']")
-    reasoning: str = dspy.OutputField(desc="Detailed reasoning for the chosen workflow - explain why vector search is used when metadata found vs regular ES when not found")
-    primary_data_source: Literal['elasticsearch', 'vector', 'hybrid'] = dspy.OutputField(desc="Primary data source for this query")
+    workflow_plan: List[str] = dspy.OutputField(desc="Ordered list of signatures to execute. Options: 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartGenerator'. ONLY include EsQueryProcessor if es_schema has relevant indices/columns for the query. For queries about weather, external data, or topics not in schema, use only ['SummarySignature'].")
+    reasoning: str = dspy.OutputField(desc="Detailed reasoning for the chosen workflow. MUST explain schema relevance check: why EsQueryProcessor was included/excluded based on whether es_schema contains data relevant to the user query. If schema doesn't match query topic, explain why SummarySignature only is appropriate.")
+    primary_data_source: Literal['elasticsearch', 'vector', 'hybrid', 'none'] = dspy.OutputField(desc="Primary data source for this query - use 'none' if no data retrieval is needed or schema doesn't match query")
 
 
 class EsQueryProcessor(dspy.Signature):
     """
-    Simple Elasticsearch query processor.
+    Elasticsearch query processor that returns top 25 results with relevant columns only.
+    Should select only the most relevant columns based on the query context plus any user-specified columns.
     """
     user_query: str = dspy.InputField(desc="User's question")
-    es_schema: str = dspy.InputField(desc="Elastic schema")
+    detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
+    es_schema: str = dspy.InputField(desc="Elastic schema showing available fields")
     conversation_history: Optional[List[Dict]] = dspy.InputField(
         desc="Previous conversation messages for context",
         default=None
     )
     es_instructions = dspy.InputField(desc="Elasticsearch query instructions")
 
-    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about the query")
-    elastic_query: dict = dspy.OutputField(desc="Generated Elasticsearch query")
+    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about the query and column selection")
+    elastic_query: dict = dspy.OutputField(desc="Generated Elasticsearch query with size=25 and _source field limiting columns to relevant ones only")
     elastic_index: str = dspy.OutputField(desc="Index to search in Elasticsearch")
+    selected_columns: List[str] = dspy.OutputField(desc="List of columns selected for the query based on relevance to user query")
     data_json: str = dspy.OutputField(desc="Raw results as JSON")
 
 

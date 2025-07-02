@@ -1,4 +1,4 @@
-"""Simple query agent using clean 2-step workflow."""
+"""Simple query agent that executes workflow plan dynamically."""
 import logging
 import json
 import dspy
@@ -6,9 +6,8 @@ import dspy
 from core.exceptions import DSPyAgentException
 from core.interfaces import IQueryAgent, ProcessedResult, QueryResult, DatabaseType
 from modules.signatures import (
-    ThinkingSignature, QueryWorkflowPlanner,
-    EsQueryProcessor, VectorQueryProcessor, SummarySignature,
-    ChartGenerator
+    ThinkingSignature, QueryWorkflowPlanner, EsQueryProcessor, VectorQueryProcessor,
+    SummarySignature, ChartGenerator
 )
 from services.metadata_search_service import search_vector_metadata
 from services.search_service import convert_json_to_markdown
@@ -19,7 +18,7 @@ from util.performance import monitor_performance
 logger = logging.getLogger(__name__)
 
 class QueryAgent(IQueryAgent):
-    """Query agent with clean workflow: Think -> Metadata Search -> Plan & Execute."""
+    """Query agent that dynamically executes workflow plan."""
 
     def __init__(self, database_selector, query_executor, result_processor):
         """Initialize with existing components."""
@@ -27,10 +26,13 @@ class QueryAgent(IQueryAgent):
         self.query_executor = query_executor
         self.result_processor = result_processor
 
-        # Clean workflow signatures
+        # Initialize all signature processors
         self.thinking = dspy.ChainOfThought(ThinkingSignature)
         self.workflow_planner = dspy.Predict(QueryWorkflowPlanner)
-        self.chart_generator = dspy.Predict(ChartGenerator)
+        self.es_processor = dspy.Predict(EsQueryProcessor)
+        self.vector_processor = dspy.ReAct(VectorQueryProcessor, tools=[])
+        self.summary_processor = dspy.ChainOfThought(SummarySignature)
+        self.chart_processor = dspy.Predict(ChartGenerator)
 
         # Config
         from core.config import config_manager
@@ -49,113 +51,115 @@ class QueryAgent(IQueryAgent):
 
     @monitor_performance("query_processing")
     def process_query(self, user_query: str, conversation_history=None) -> ProcessedResult:
-        """Process query using clean workflow: Think -> Metadata Search -> Plan & Execute."""
+        """Process query by dynamically executing workflow plan."""
         try:
             parsed_history = self._parse_history(conversation_history)
 
-            # Step 1: Think - Analyze user intent
+            # Step 1: Think
             thinking_result = self.thinking(
                 user_query=user_query,
                 conversation_history=parsed_history
             )
 
-            # Step 2: Metadata Search - Check vector metadata directly
-            metadata_search_result = search_vector_metadata(
+            # Step 2: Metadata Search
+            metadata_result = search_vector_metadata(
                 search_terms=thinking_result.search_terms,
                 key_concepts=thinking_result.key_concepts
             )
 
-            # Step 3: Plan Complete Workflow - QueryWorkflowPlanner decides everything
+            # Step 3: Plan Workflow
             workflow_plan = self.workflow_planner(
                 user_query=user_query,
                 detailed_analysis=thinking_result.detailed_analysis,
-                metadata_found=metadata_search_result["metadata_found"],
-                metadata_summary=metadata_search_result["metadata_summary"],
+                metadata_found=metadata_result["metadata_found"],
+                metadata_summary=metadata_result["metadata_summary"],
                 es_schema=self.config.es_schema,
                 conversation_history=parsed_history
             )
 
-            # Execute the planned workflow with markdown conversion
-            query_result = self._execute_workflow(
+            # Step 4: Execute workflow plan dynamically
+            results = self._execute_workflow_plan(
                 workflow_plan.workflow_plan,
                 user_query,
-                parsed_history,
-                thinking_result.detailed_analysis
+                thinking_result.detailed_analysis,
+                parsed_history
             )
 
-            # Generate summary with detailed_analysis
-            summary_result = self._generate_summary(
-                query_result, user_query, thinking_result.detailed_analysis, conversation_history
-            )
-
-            # Only generate chart if ChartGenerator is in the workflow plan
-            chart_config, chart_html = None, None
-            if 'ChartGenerator' in workflow_plan.workflow_plan:
-                chart_config, chart_html = self._generate_chart(
-                    query_result, user_query, thinking_result.detailed_analysis
-                )
-
-            return ProcessedResult(
-                query_result=query_result,
-                summary=summary_result,
-                chart_config=chart_config,
-                chart_html=chart_html
-            )
+            return results
 
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
             raise DSPyAgentException(f"Query processing failed: {e}")
 
-    def _execute_workflow(self, workflow_plan: list, user_query: str, parsed_history, detailed_analysis: str) -> QueryResult:
-        """Execute the planned workflow sequence."""
+    def _execute_workflow_plan(self, plan: list, user_query: str, detailed_analysis: str, conversation_history) -> ProcessedResult:
+        """Execute the workflow plan by looping over signatures."""
         query_result = None
+        summary = None
+        chart_config = None
+        chart_html = None
 
-        for signature_name in workflow_plan:
+        for signature_name in plan:
+            logger.info(f"Executing signature: {signature_name}")
+
             if signature_name == 'EsQueryProcessor':
-                query_result = self.query_executor.execute_query(
-                    database_type=DatabaseType.ELASTIC,
-                    user_query=user_query,
-                    schema=self.config.es_schema,
-                    instructions=self.config.es_instructions,
-                    conversation_history=parsed_history
-                )
-                # Convert ES results to markdown
-                if query_result and query_result.data:
-                    markdown_content = convert_json_to_markdown(query_result.data, "Elasticsearch Query Results")
-                    query_result.markdown_content = markdown_content
+                query_result = self._execute_es_query(user_query, detailed_analysis, conversation_history)
 
             elif signature_name == 'VectorQueryProcessor':
-                query_result = self.query_executor.execute_query(
-                    database_type=DatabaseType.VECTOR,
-                    user_query=user_query,
-                    schema=self.config.es_schema,
-                    instructions=self.config.es_instructions,
-                    conversation_history=parsed_history
-                )
-                # Convert Vector results to markdown
-                if query_result and query_result.data:
-                    markdown_content = convert_json_to_markdown(query_result.data, "Vector Search Results")
-                    query_result.markdown_content = markdown_content
+                query_result = self._execute_vector_query(user_query, detailed_analysis, conversation_history)
 
-        # Return empty result if no query execution happened
-        if query_result is None:
-            query_result = QueryResult(
-                database_type=DatabaseType.ELASTIC,
-                data=[],
-                raw_result={}
-            )
+            elif signature_name == 'SummarySignature':
+                json_data = json.dumps(query_result.data) if query_result and query_result.data else "[]"
+                summary = self._execute_summary(user_query, detailed_analysis, conversation_history, json_data)
+
+            elif signature_name == 'ChartGenerator':
+                json_data = json.dumps(query_result.data) if query_result and query_result.data else "[]"
+                chart_config, chart_html = self._execute_chart_generation(user_query, detailed_analysis, json_data)
+
+        return ProcessedResult(
+            query_result=query_result or self._empty_query_result(),
+            summary=summary or "No summary generated",
+            chart_config=chart_config,
+            chart_html=chart_html
+        )
+
+    def _execute_es_query(self, user_query: str, detailed_analysis: str, conversation_history) -> QueryResult:
+        """Execute Elasticsearch query using components."""
+        query_result = self.query_executor.execute_query(
+            database_type=DatabaseType.ELASTIC,
+            user_query=user_query,
+            schema=self.config.es_schema,
+            instructions=self.config.es_instructions,
+            conversation_history=conversation_history
+        )
+
+        # Convert to markdown
+        if query_result and query_result.data:
+            markdown_content = convert_json_to_markdown(query_result.data, "Elasticsearch Query Results")
+            query_result.markdown_content = markdown_content
 
         return query_result
 
-    def _generate_summary(self, query_result: QueryResult, user_query: str, detailed_analysis: str, conversation_history) -> str:
-        """Generate summary using SummarySignature with detailed_analysis."""
-        try:
-            # Use result processor's summary generator but pass detailed_analysis
-            json_data = json.dumps(query_result.data) if query_result.data else "[]"
+    def _execute_vector_query(self, user_query: str, detailed_analysis: str, conversation_history) -> QueryResult:
+        """Execute vector query using components."""
+        query_result = self.query_executor.execute_query(
+            database_type=DatabaseType.VECTOR,
+            user_query=user_query,
+            schema=self.config.es_schema,
+            instructions=self.config.es_instructions,
+            conversation_history=conversation_history
+        )
 
-            # Create a simple DSPy summary signature instance
-            summary_signature = dspy.ChainOfThought(SummarySignature)
-            result = summary_signature(
+        # Convert to markdown
+        if query_result and query_result.data:
+            markdown_content = convert_json_to_markdown(query_result.data, "Vector Search Results")
+            query_result.markdown_content = markdown_content
+
+        return query_result
+
+    def _execute_summary(self, user_query: str, detailed_analysis: str, conversation_history, json_data: str) -> str:
+        """Execute summary generation."""
+        try:
+            result = self.summary_processor(
                 user_query=user_query,
                 detailed_user_query=detailed_analysis,
                 conversation_history=conversation_history,
@@ -163,19 +167,17 @@ class QueryAgent(IQueryAgent):
             )
             return result.summary
         except Exception as e:
-            logger.error(f"Error generating summary: {e}")
+            logger.error(f"Summary generation failed: {e}")
             return "Summary generation failed"
 
-    def _generate_chart(self, query_result: QueryResult, user_query: str, detailed_analysis: str) -> tuple:
-        """Generate chart using simplified ChartGenerator signature and chart_generator.py."""
+    def _execute_chart_generation(self, user_query: str, detailed_analysis: str, json_data: str) -> tuple:
+        """Execute chart generation using existing chart_generator.py."""
         try:
-            json_data = json.dumps(query_result.data) if query_result.data else "[]"
-
-            if not query_result.data or json_data == "[]":
+            if not json_data or json_data == "[]":
                 return None, None
 
-            # Use the ChartGenerator signature to decide chart parameters
-            chart_result = self.chart_generator(
+            # Use DSPy to decide chart parameters
+            chart_result = self.chart_processor(
                 user_query=user_query,
                 detailed_user_query=detailed_analysis,
                 json_results=json_data
@@ -184,7 +186,7 @@ class QueryAgent(IQueryAgent):
             if not chart_result.needs_chart:
                 return None, None
 
-            # Use the existing chart_generator.py to create the actual chart
+            # Generate chart using existing components
             chart_config = generate_highchart_config(
                 chart_type=chart_result.chart_type,
                 x_axis_column=chart_result.x_axis_column,
@@ -195,17 +197,23 @@ class QueryAgent(IQueryAgent):
                 json_data=json_data
             )
 
-            # Generate HTML from config
             chart_html = generate_chart_from_config(chart_config)
-
             return chart_config, chart_html
 
         except Exception as e:
-            logger.error(f"Error generating chart: {e}")
+            logger.error(f"Chart generation failed: {e}")
             return None, None
 
+    def _empty_query_result(self) -> QueryResult:
+        """Return empty query result."""
+        return QueryResult(
+            database_type=DatabaseType.ELASTIC,
+            data=[],
+            raw_result={}
+        )
+
     async def process_query_async(self, user_query: str, conversation_history=None, session_id=None, message_id=None):
-        """Async version of the clean workflow with markdown conversion."""
+        """Async version that loops over workflow plan."""
         try:
             parsed_history = self._parse_history(conversation_history)
 
@@ -217,59 +225,58 @@ class QueryAgent(IQueryAgent):
             )
             yield "thinking_analysis", thinking_result.detailed_analysis
 
-            # Step 2: Metadata Search - Direct function call
+            # Step 2: Metadata Search
             yield "current_step", "metadata_search"
-            metadata_search_result = search_vector_metadata(
+            metadata_result = search_vector_metadata(
                 search_terms=thinking_result.search_terms,
                 key_concepts=thinking_result.key_concepts
             )
-            yield "metadata_found", metadata_search_result["metadata_found"]
-            yield "metadata_summary", metadata_search_result["metadata_summary"]
+            yield "metadata_found", metadata_result["metadata_found"]
+            yield "metadata_summary", metadata_result["metadata_summary"]
 
-            # Step 3: Plan Complete Workflow - QueryWorkflowPlanner decides everything
+            # Step 3: Plan Workflow
             yield "current_step", "planning"
             workflow_plan = self.workflow_planner(
                 user_query=user_query,
                 detailed_analysis=thinking_result.detailed_analysis,
-                metadata_found=metadata_search_result["metadata_found"],
-                metadata_summary=metadata_search_result["metadata_summary"],
+                metadata_found=metadata_result["metadata_found"],
+                metadata_summary=metadata_result["metadata_summary"],
                 es_schema=self.config.es_schema,
                 conversation_history=parsed_history
             )
             yield "workflow_plan", workflow_plan.workflow_plan
             yield "workflow_reasoning", workflow_plan.reasoning
-            yield "primary_data_source", workflow_plan.primary_data_source
 
-            # Step 4: Execute the planned workflow with markdown conversion
-            query_result = self._execute_workflow(
-                workflow_plan.workflow_plan,
-                user_query,
-                parsed_history,
-                thinking_result.detailed_analysis
-            )
-            yield "data", query_result.data
+            # Step 4: Execute workflow plan dynamically
+            query_result = None
 
-            # Push markdown content to frontend if available
-            if hasattr(query_result, 'markdown_content') and query_result.markdown_content:
-                yield "markdown_results", query_result.markdown_content
+            for signature_name in workflow_plan.workflow_plan:
+                yield "current_step", f"executing_{signature_name.lower()}"
 
-            # Step 5: Generate summary with detailed_analysis
-            yield "current_step", "generating_summary"
-            summary_result = self._generate_summary(
-                query_result, user_query, thinking_result.detailed_analysis, conversation_history
-            )
-            yield "summary", summary_result
+                if signature_name == 'EsQueryProcessor':
+                    query_result = self._execute_es_query(user_query, thinking_result.detailed_analysis, parsed_history)
+                    yield "data", query_result.data
+                    if hasattr(query_result, 'markdown_content'):
+                        yield "markdown_results", query_result.markdown_content
 
-            # Step 6: Only generate chart if ChartGenerator is in the workflow plan
-            if 'ChartGenerator' in workflow_plan.workflow_plan:
-                yield "current_step", "generating_chart"
-                chart_config, chart_html = self._generate_chart(
-                    query_result, user_query, thinking_result.detailed_analysis
-                )
-                if chart_config:
-                    yield "chart_config", chart_config
-                if chart_html:
-                    yield "chart_html", chart_html
+                elif signature_name == 'VectorQueryProcessor':
+                    query_result = self._execute_vector_query(user_query, thinking_result.detailed_analysis, parsed_history)
+                    yield "data", query_result.data
+                    if hasattr(query_result, 'markdown_content'):
+                        yield "markdown_results", query_result.markdown_content
+
+                elif signature_name == 'SummarySignature':
+                    json_data = json.dumps(query_result.data) if query_result and query_result.data else "[]"
+                    summary = self._execute_summary(user_query, thinking_result.detailed_analysis, parsed_history, json_data)
+                    yield "summary", summary
+
+                elif signature_name == 'ChartGenerator':
+                    json_data = json.dumps(query_result.data) if query_result and query_result.data else "[]"
+                    chart_config, chart_html = self._execute_chart_generation(user_query, thinking_result.detailed_analysis, json_data)
+                    if chart_config:
+                        yield "chart_config", chart_config
+                    if chart_html:
+                        yield "chart_html", chart_html
 
             yield "completed", True
 
