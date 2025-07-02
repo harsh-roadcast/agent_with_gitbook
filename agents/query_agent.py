@@ -8,8 +8,7 @@ from components.chart_generator import generate_highchart_config
 from core.exceptions import DSPyAgentException
 from core.interfaces import IQueryAgent, ProcessedResult, QueryResult, DatabaseType
 from modules.signatures import (
-    ThinkingSignature, QueryWorkflowPlanner, EsQueryProcessor, VectorQueryProcessor,
-    SummarySignature, ChartGenerator
+    ThinkingSignature, QueryWorkflowPlanner, SummarySignature, ChartGenerator
 )
 from services.metadata_search_service import search_vector_metadata
 from services.search_service import convert_json_to_markdown
@@ -27,11 +26,9 @@ class QueryAgent(IQueryAgent):
         self.query_executor = query_executor
         self.result_processor = result_processor
 
-        # Initialize all signature processors
+        # Initialize only the signature processors that are actually used
         self.thinking = dspy.ChainOfThought(ThinkingSignature)
         self.workflow_planner = dspy.Predict(QueryWorkflowPlanner)
-        self.es_processor = dspy.Predict(EsQueryProcessor)
-        self.vector_processor = dspy.ReAct(VectorQueryProcessor, tools=[])
         self.summary_processor = dspy.ChainOfThought(SummarySignature)
         self.chart_processor = dspy.Predict(ChartGenerator)
 

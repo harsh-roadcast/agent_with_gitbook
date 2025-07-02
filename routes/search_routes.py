@@ -2,10 +2,14 @@
 import logging
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
 
+from services.auth_service import get_current_user
 from services.conversation_service import conversation_service
+from agents.query_agent import QueryAgent
+from components.query_executor import DSPyQueryExecutor
+from components.result_processor import ResultProcessor
 
 logger = logging.getLogger(__name__)
 

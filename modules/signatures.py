@@ -28,12 +28,12 @@ class QueryWorkflowPlanner(dspy.Signature):
     - If metadata_found = True: Use VectorQueryProcessor (semantic search on found documents)
     - If metadata_found = False: Check if es_schema contains relevant indices/columns that can fulfill the user query
       - If es_schema has relevant data: Use EsQueryProcessor (regular Elasticsearch search)
-      - If es_schema does NOT have relevant data: Skip query processors, go directly to SummarySignature
-    - If neither query processor is suitable: Skip both and use only SummarySignature
-    - Always consider if ChartGenerator is needed based on user request
+      - If es_schema does NOT have relevant data: Skip query processors, proceed to SummarySignature
+    - ALWAYS include SummarySignature in the workflow plan (required for all queries)
+    - Consider if ChartGenerator is needed based on user request (optional)
 
     IMPORTANT: Only use EsQueryProcessor if the es_schema actually contains indices and columns that are relevant to the user's query.
-    For queries about weather, external APIs, current events, or topics not in the schema, skip query processors entirely.
+    For queries about weather, external APIs, current events, or topics not in the schema, skip query processors but still include SummarySignature.
     """
     user_query: str = dspy.InputField(desc="User's original question")
     detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
@@ -45,8 +45,8 @@ class QueryWorkflowPlanner(dspy.Signature):
         default=None
     )
 
-    workflow_plan: List[str] = dspy.OutputField(desc="Ordered list of signatures to execute. Options: 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartGenerator'. ONLY include EsQueryProcessor if es_schema has relevant indices/columns for the query. For queries about weather, external data, or topics not in schema, use only ['SummarySignature'].")
-    reasoning: str = dspy.OutputField(desc="Detailed reasoning for the chosen workflow. MUST explain schema relevance check: why EsQueryProcessor was included/excluded based on whether es_schema contains data relevant to the user query. If schema doesn't match query topic, explain why SummarySignature only is appropriate.")
+    workflow_plan: List[str] = dspy.OutputField(desc="Ordered list of signatures to execute. Options: 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartGenerator'. MUST ALWAYS include 'SummarySignature'. ONLY include EsQueryProcessor if es_schema has relevant indices/columns for the query. For queries about weather, external data, or topics not in schema, use ['SummarySignature'] or ['SummarySignature', 'ChartGenerator'] if chart is needed.")
+    reasoning: str = dspy.OutputField(desc="Detailed reasoning for the chosen workflow. MUST explain schema relevance check: why EsQueryProcessor was included/excluded based on whether es_schema contains data relevant to the user query. Always explain why SummarySignature is included (required for all workflows).")
     primary_data_source: Literal['elasticsearch', 'vector', 'hybrid', 'none'] = dspy.OutputField(desc="Primary data source for this query - use 'none' if no data retrieval is needed or schema doesn't match query")
 
 
@@ -69,20 +69,6 @@ class EsQueryProcessor(dspy.Signature):
     elastic_index: str = dspy.OutputField(desc="Index to search in Elasticsearch")
     selected_columns: List[str] = dspy.OutputField(desc="List of columns selected for the query based on relevance to user query")
     data_json: str = dspy.OutputField(desc="Raw results as JSON")
-
-
-class VectorSearchDecider(dspy.Signature):
-    """
-    Analyzes metadata to decide if vector search should be performed.
-    """
-    user_query: str = dspy.InputField(desc="User's original question")
-    detailed_user_query: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
-    key_concepts: List[str] = dspy.InputField(desc="Key concepts from user query")
-    search_terms: List[str] = dspy.InputField(desc="Search terms from user query")
-
-    metadata_query: str = dspy.OutputField(desc="Query to search document metadata")
-    should_search_vector: bool = dspy.OutputField(desc="Should we proceed with vector search?")
-    reasoning: str = dspy.OutputField(desc="Why vector search is or isn't needed")
 
 
 class VectorQueryProcessor(dspy.Signature):
