@@ -60,8 +60,7 @@ class DSPyQueryExecutor(IQueryExecutor):
 
         result = self.vector_agent(
             user_query=user_query,
-            es_schema=schema,
-            es_instructions=instructions,
+            detailed_user_query=user_query,  # Add the missing field - use user_query as detailed analysis
             conversation_history=conversation_history
         )
 
@@ -89,7 +88,20 @@ class DSPyQueryExecutor(IQueryExecutor):
         try:
             # Extract query and index from the result
             elastic_query = result.elastic_query
-            index_name = result.index_name
+            index_name = result.elastic_index  # Changed from index_name to elastic_index
+
+            # Debug logging to check what we actually got
+            logger.info(f"🔍 DEBUG: result object has attributes: {dir(result)}")
+            logger.info(f"🔍 DEBUG: elastic_query = {elastic_query}")
+            logger.info(f"🔍 DEBUG: elastic_index = {getattr(result, 'elastic_index', 'MISSING')}")
+            logger.info(f"🔍 DEBUG: index_name variable = {index_name}")
+
+            # Add fallback if index_name is None or empty
+            if not index_name or index_name in [None, '', 'None']:
+                logger.warning(f"⚠️  Index name is missing or empty: '{index_name}', using fallback")
+                # Try common index names as fallback
+                index_name = "docling_documents"  # or whatever your main index is
+                logger.info(f"🔄 Using fallback index: {index_name}")
 
             logger.info(f"📝 Generated query for index '{index_name}': {elastic_query}")
 
@@ -155,7 +167,7 @@ class DSPyQueryExecutor(IQueryExecutor):
 
             # Get elastic query and index name directly from result - LLM always provides these
             elastic_query = result.elastic_query if hasattr(result, 'elastic_query') else None
-            index_name = result.index_name if hasattr(result, 'index_name') else None
+            index_name = result.elastic_index if hasattr(result, 'elastic_index') else None
 
             return QueryResult(
                 database_type=database_type,

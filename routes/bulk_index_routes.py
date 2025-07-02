@@ -73,3 +73,33 @@ async def get_bulk_index_status(
         "result": task.result if task.state == "SUCCESS" else None,
         "error": str(task.result) if task.state == "FAILURE" else None
     }
+
+
+@router.delete("/index/{index_name}")
+async def delete_index(
+    index_name: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Delete an Elasticsearch index."""
+    try:
+        from services.search_service import get_es_client
+
+        es_client = get_es_client()
+
+        # Check if index exists
+        if not es_client.indices.exists(index=index_name):
+            raise HTTPException(status_code=404, detail=f"Index '{index_name}' not found")
+
+        # Delete the index
+        es_client.indices.delete(index=index_name)
+
+        logger.info(f"User {current_user.get('username')} deleted index '{index_name}'")
+
+        return {
+            "message": f"Index '{index_name}' deleted successfully",
+            "index_name": index_name
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to delete index '{index_name}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete index: {str(e)}")
