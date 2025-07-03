@@ -8,9 +8,10 @@ from components.chart_generator import generate_highchart_config
 from core.exceptions import DSPyAgentException
 from core.interfaces import IQueryAgent, ProcessedResult, QueryResult, DatabaseType
 from modules.signatures import (
-    ThinkingSignature, QueryWorkflowPlanner, SummarySignature, ChartGenerator
+    ThinkingSignature, QueryWorkflowPlanner, SummarySignature, ChartGenerator, DocumentMetadataExtractor,
+    EsQueryProcessor, VectorQueryProcessor
 )
-from services.search_service import convert_json_to_markdown
+from services.search_service import convert_json_to_markdown, execute_query, execute_vector_query
 from util.chart_utils import generate_chart_from_config
 from util.performance import monitor_performance
 
@@ -19,15 +20,13 @@ logger = logging.getLogger(__name__)
 class QueryAgent(IQueryAgent):
     """Query agent that dynamically executes workflow plan."""
 
-    def __init__(self, database_selector, query_executor, result_processor):
-        """Initialize with existing components."""
-        self.database_selector = database_selector
-        self.query_executor = query_executor
-        self.result_processor = result_processor
-
-        # Initialize only the signature processors that are actually used
+    def __init__(self):
+        """Initialize QueryAgent with all processors directly."""
+        # Initialize all signature processors directly
         self.thinking = dspy.ChainOfThought(ThinkingSignature)
         self.workflow_planner = dspy.Predict(QueryWorkflowPlanner)
+        self.es_processor = dspy.Predict(EsQueryProcessor)
+        self.vector_processor = dspy.Predict(VectorQueryProcessor)
         self.summary_processor = dspy.ChainOfThought(SummarySignature)
         self.chart_processor = dspy.Predict(ChartGenerator)
 
@@ -97,6 +96,8 @@ class QueryAgent(IQueryAgent):
                 query_result = self._execute_vector_query(user_query, detailed_analysis, context_summary)
 
             elif signature_name == 'SummarySignature':
+                print(f"Generating summary for query: {user_query}")
+                print(f"Generating summary for query: {query_result}")
                 json_data = json.dumps(query_result.data) if query_result and query_result.data else "[]"
                 summary = self._execute_summary(user_query, detailed_analysis, context_summary, json_data)
 
@@ -112,44 +113,107 @@ class QueryAgent(IQueryAgent):
         )
 
     def _execute_es_query(self, user_query: str, detailed_analysis: str, context_summary: str) -> QueryResult:
-        """Execute Elasticsearch query using components."""
-        query_result = self.query_executor.execute_query(
-            database_type=DatabaseType.ELASTIC,
-            user_query=user_query,
-            schema=self.config.es_schema,
-            instructions=self.config.es_instructions,
-            conversation_history=context_summary,
-            detailed_analysis=detailed_analysis
-        )
+        """Execute Elasticsearch query using DSPy processor directly."""
+        try:
+            # Use DSPy processor to generate ES query
+            es_result = self.es_processor(
+                user_query=user_query,
+                detailed_analysis=detailed_analysis,
+                context_summary=context_summary,
+                es_schema=self.config.es_schema,
+                es_instructions=self.config.es_instructions
+            )
 
-        # Convert to markdown
-        if query_result and query_result.data:
-            markdown_content = convert_json_to_markdown(query_result.data, "Elasticsearch Query Results")
-            query_result.markdown_content = markdown_content
+            # Execute the actual ES query
+            query_response = execute_query(es_result.elastic_query, es_result.elastic_index)
 
-        return query_result
+            if query_response.get('success'):
+                # Extract data from ES response
+                es_data = query_response['result']
+                if hasattr(es_data, 'body'):
+                    response_dict = es_data.body
+                elif hasattr(es_data, 'to_dict'):
+                    response_dict = es_data.to_dict()
+                else:
+                    response_dict = dict(es_data)
+
+                # Create QueryResult
+                query_result = QueryResult(
+                    database_type=DatabaseType.ELASTIC,
+                    data=response_dict.get('hits', {}).get('hits', []),
+                    raw_result=response_dict
+                )
+
+                # Convert to markdown
+                if query_result.data:
+                    markdown_content = convert_json_to_markdown(query_result.data, "Elasticsearch Query Results")
+                    query_result.markdown_content = markdown_content
+
+                logger.info(f"✅ ES query completed successfully with {len(query_result.data)} results")
+                return query_result
+            else:
+                logger.error(f"ES query failed: {query_response}")
+                return self._empty_query_result()
+
+        except Exception as e:
+            logger.error(f"ES query execution failed: {e}")
+            return self._empty_query_result()
 
     def _execute_vector_query(self, user_query: str, detailed_analysis: str, context_summary: str) -> QueryResult:
-        """Execute vector query using components."""
-        query_result = self.query_executor.execute_query(
-            database_type=DatabaseType.VECTOR,
-            user_query=user_query,
-            schema=self.config.es_schema,
-            instructions=self.config.es_instructions,
-            conversation_history=context_summary,
-            detailed_analysis=detailed_analysis
-        )
+        """Execute vector query using DSPy processor directly."""
+        try:
+            # Use DSPy processor to generate vector query
+            vector_result = self.vector_processor(
+                user_query=user_query,
+                detailed_analysis=detailed_analysis,
+                context_summary=context_summary
+            )
 
-        # Convert to markdown
-        if query_result and query_result.data:
-            markdown_content = convert_json_to_markdown(query_result.data, "Vector Search Results")
-            query_result.markdown_content = markdown_content
+            # Execute the actual vector search
+            vector_search_params = {
+                'query_text': vector_result.vector_query,
+                'index': 'docling_documents',
+                'size': 25
+            }
 
-        return query_result
+            vector_response = execute_vector_query(vector_search_params)
+
+            if vector_response.get('success'):
+                # Extract data from vector response
+                vector_data = vector_response['result']
+                if hasattr(vector_data, 'body'):
+                    response_dict = vector_data.body
+                elif hasattr(vector_data, 'to_dict'):
+                    response_dict = vector_data.to_dict()
+                else:
+                    response_dict = dict(vector_data)
+
+                # Create QueryResult
+                query_result = QueryResult(
+                    database_type=DatabaseType.VECTOR,
+                    data=response_dict.get('hits', {}).get('hits', []),
+                    raw_result=response_dict
+                )
+
+                # Convert to markdown
+                if query_result.data:
+                    markdown_content = convert_json_to_markdown(query_result.data, "Vector Search Results")
+                    query_result.markdown_content = markdown_content
+
+                logger.info(f"✅ Vector query completed successfully with {len(query_result.data)} results")
+                return query_result
+            else:
+                logger.error(f"Vector query failed: {vector_response}")
+                return self._empty_query_result()
+
+        except Exception as e:
+            logger.error(f"Vector query execution failed: {e}")
+            return self._empty_query_result()
 
     def _execute_summary(self, user_query: str, detailed_analysis: str, context_summary: str, json_data: str) -> str:
         """Execute summary generation."""
         try:
+            print(f"JSON Data for Summary: {json_data[:500]}...")  # Debugging output
             result = self.summary_processor(
                 user_query=user_query,
                 detailed_analysis=detailed_analysis,

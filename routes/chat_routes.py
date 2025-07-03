@@ -12,8 +12,6 @@ from sse_starlette.sse import EventSourceResponse
 from services.auth_service import get_current_user
 from services.conversation_service import ConversationService
 from agents.query_agent import QueryAgent
-from components.query_executor import DSPyQueryExecutor
-from components.result_processor import ResultProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -139,10 +137,8 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
     conversation_service.add_user_message(session_id, query, message_id)
     conversation_history = conversation_service.get_conversation_history(session_id)
 
-    # Process query asynchronously - Initialize query agent with components
-    query_executor = DSPyQueryExecutor()
-    result_processor = ResultProcessor(None, None)  # Summary and chart generators will be handled by query agent
-    query_agent = QueryAgent(None, query_executor, result_processor)
+    # Process query asynchronously - Initialize query agent (no parameters needed)
+    query_agent = QueryAgent()
     assistant_response_stored = False
 
     handler.log_timing("Starting async processing")
@@ -231,10 +227,8 @@ async def handle_non_streaming_request(user_message: str, session_id: str, user_
     conversation_service.add_user_message(session_id, user_message, message_id)
     conversation_history = conversation_service.get_conversation_history(session_id)
 
-    # Initialize query agent with components
-    query_executor = DSPyQueryExecutor()
-    result_processor = ResultProcessor(None, None)
-    query_agent = QueryAgent(None, query_executor, result_processor)
+    # Initialize query agent (no parameters needed)
+    query_agent = QueryAgent()
     result_dict = {}
 
     async for field, value in query_agent.process_query_async(
