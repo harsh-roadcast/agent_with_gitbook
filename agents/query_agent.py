@@ -134,20 +134,15 @@ class QueryAgent(IQueryAgent):
             query_response = execute_query(es_result.elastic_query, es_result.elastic_index)
 
             if query_response.get('success'):
-                # Extract data from ES response
-                es_data = query_response['result']
-                if hasattr(es_data, 'body'):
-                    response_dict = es_data.body
-                elif hasattr(es_data, 'to_dict'):
-                    response_dict = es_data.to_dict()
-                else:
-                    response_dict = dict(es_data)
+                # Extract clean documents directly from response
+                clean_documents = query_response['result']  # This is now a list of clean documents
+                total_count = query_response.get('total_count', len(clean_documents))
 
-                # Create QueryResult
+                # Create QueryResult with clean documents
                 query_result = QueryResult(
                     database_type=DatabaseType.ELASTIC,
-                    data=response_dict.get('hits', {}).get('hits', []),
-                    raw_result=response_dict
+                    data=clean_documents,  # Use clean documents directly
+                    raw_result={'hits': {'hits': clean_documents, 'total': {'value': total_count}}}  # Maintain compatibility
                 )
 
                 # Convert to markdown

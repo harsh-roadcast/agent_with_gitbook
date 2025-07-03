@@ -27,24 +27,19 @@ def get_sentence_transformer_model():
     """Returns the global sentence transformer model instance."""
     return sentence_model
 
-def execute_query(es_query: dict, index: str) -> dict:
+def execute_query(query_body: dict, index: str) -> dict:
     """Execute a standard Elasticsearch query"""
     start_time = time.time()
     logger.info(f"🔍 [TIMING] Starting ES query execution at {start_time}")
-    logger.info(f"Executing standard ES query on index '{index}': {es_query}")
+    logger.info(f"Executing standard ES query on index '{index}': {query_body}")
 
     # Remove any size parameters and force to 25
-    query_body = es_query.copy()
-    if 'size' in query_body:
-        query_body.pop('size')
 
-    max_size = 25
-    logger.info(f"Enforcing maximum result limit of {max_size} records")
-    logger.info(f"Executing query on index: {index}")
+    logger.info(f"Executing query on index: {index} body: {query_body}")
 
     try:
         query_start = time.time()
-        result = es_client.search(index=index, body=query_body, size=max_size, request_timeout=30)
+        result = es_client.search(index=index, body=query_body, request_timeout=30)
         query_end = time.time()
 
         total_hits = result.get('hits', {}).get('total', {})
@@ -55,10 +50,27 @@ def execute_query(es_query: dict, index: str) -> dict:
 
         logger.info(f"⚡ [TIMING] ES query completed in {(query_end - query_start) * 1000:.2f}ms - found {total_count} results on index {index}")
 
+        # Extract only the _source data (actual document data) without ES metadata
+        clean_documents = []
+        hits = result.get('hits', {}).get('hits', [])
+
+        for hit in hits:
+            # Only include the _source data, exclude _id, _index, _score, _type, etc.
+            source_data = hit.get('_source', {})
+            if source_data:
+                clean_documents.append(source_data)
+
+        logger.info(f"📄 Extracted {len(clean_documents)} clean documents without ES metadata")
+
         end_time = time.time()
         logger.info(f"🏁 [TIMING] Total execute_query function took {(end_time - start_time) * 1000:.2f}ms")
 
-        return {"success": True, "result": result, "query_type": "standard"}
+        return {
+            "success": True,
+            "result": clean_documents,  # Return clean documents instead of full ES response
+            "total_count": total_count,
+            "query_type": "standard"
+        }
     except Exception as e:
         logger.error(f"Error executing query on index {index}: {e}")
         raise

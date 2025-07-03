@@ -151,21 +151,21 @@ class DSPyQueryExecutor(IQueryExecutor):
             query_result = execute_query(elastic_query, index_name)
 
             if query_result.get('success'):
-                # Extract the actual response data from ObjectApiResponse
-                es_response = query_result['result']
+                # Extract clean documents directly from response
+                clean_documents = query_result['result']  # This is now a list of clean documents
+                total_count = query_result.get('total_count', len(clean_documents))
 
-                # Convert ObjectApiResponse to dict if needed
-                if hasattr(es_response, 'body'):
-                    response_dict = es_response.body
-                elif hasattr(es_response, 'to_dict'):
-                    response_dict = es_response.to_dict()
-                else:
-                    # If it's already a dict, use it directly
-                    response_dict = dict(es_response)
+                # Create a compatible response structure for data_json
+                response_dict = {
+                    'hits': {
+                        'hits': [{'_source': doc} for doc in clean_documents],  # Wrap documents in _source for compatibility
+                        'total': {'value': total_count}
+                    }
+                }
 
                 # Manually populate data_json with the extracted dict
                 result.data_json = json.dumps(response_dict)
-                logger.info(f"✅ Successfully extracted {len(response_dict.get('hits', {}).get('hits', []))} records from ES response")
+                logger.info(f"✅ Successfully extracted {len(clean_documents)} clean records from ES response")
             else:
                 logger.error(f"Query execution failed: {query_result}")
                 result.data_json = json.dumps({"hits": {"hits": []}})
