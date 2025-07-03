@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Literal
+from typing import List, Dict, Literal
 
 import dspy
 
@@ -7,65 +7,37 @@ class ThinkingSignature(dspy.Signature):
     """
     Analyzes user query in context of conversation history to understand what they're really asking for.
     Uses previous conversation messages to better understand context, references, and follow-up questions.
-    Generates search terms and concepts optimized for metadata matching in vector store.
     """
     user_query: str = dspy.InputField(desc="User's current question or request")
     conversation_history: List[Dict] = dspy.InputField(desc="Previous conversation messages for context - REQUIRED. Analyze this to understand references, follow-ups, and conversation flow")
 
     detailed_analysis: str = dspy.OutputField(desc="Detailed analysis of what the user is trying to ask, incorporating context from conversation history")
     intent: str = dspy.OutputField(desc="Primary intent behind the user's query, considering conversation context and any references to previous messages")
-    key_concepts: List[str] = dspy.OutputField(desc="Key concepts and entities optimized for metadata search. Include document types (Legal Code, Government Gazette, Legislative Act), legal terms, law names (Bharatiya Nyaya Sanhita, Bharatiya Nagarik Suraksha Sanhita, Bharatiya Sakshya Adhiniyam), specific topics (criminal law, evidence, procedure), and general legal concepts that would appear in document metadata fields")
-    search_terms: List[str] = dspy.OutputField(desc="Search terms optimized for fuzzy matching in metadata fields including: filenames (BNS, BNSS, BSA, Gazette), document titles, main topics, keywords, and summary content. Include variations, abbreviations, and related terms that would help find relevant documents even with partial matches")
     context_summary: str = dspy.OutputField(desc="Summary of relevant context from conversation history that affects understanding of current query")
 
 
 class QueryWorkflowPlanner(dspy.Signature):
     """
-    Decides the complete workflow based on metadata search results, ES schema, and conversation history.
-    Plans which signatures to call in what sequence, considering previous conversation context and data availability.
+    Decides workflow based on conversation context, query type, and data availability.
 
-    Logic:
-    - PRIORITY: For follow-up questions, ALWAYS regenerate data queries to ensure fresh and complete results
-    - FIRST: Analyze conversation_history to check if this is a follow-up question or new request
-    - For follow-up questions (visualizations, different analysis, refined queries): ALWAYS include query processors to regenerate data
-    - If NO relevant data exists in conversation context OR data is insufficient/outdated, ALWAYS regenerate searches
-    - If conversation_history indicates need for fresh data or different search approach, prioritize new query execution
-    - PREFERENCE ORDER FOR DATA SOURCE SELECTION:
-      1. FIRST CHECK: If es_schema contains relevant indices/columns that can fulfill the user query
-         - If es_schema has relevant data: Use EsQueryProcessor (regular Elasticsearch search) - PREFERRED
-      2. SECOND CHECK: If es_schema does NOT have relevant data AND metadata_found = True: Use VectorQueryProcessor (semantic search on found documents)
-      3. If NEITHER es_schema has relevant data NOR metadata_found = True: Skip query processors, proceed to SummarySignature
-    - Consider conversation flow: ALWAYS RERUN searches when:
-      * Follow-up questions about existing data (even for visualization changes)
-      * No elastic data exists in conversation context
-      * Previous query results are insufficient for current question
-      * User asks follow-up questions that reference previous data
-      * Vector or JSON data is missing from context but needed for the query
-      * User requests different chart types or visualization changes
-    - ALWAYS include SummarySignature in the workflow plan (required for all queries)
-    - Consider if ChartGenerator is needed based on user request and conversation context (optional)
+    Decision Logic:
+    1. Check context_summary for previous ES/Vector queries → maintain consistency
+    2. Analyze detailed_analysis for analytics/reports/analysis questions → prefer ES if schema allows
+    3. Check es_schema relevance for new queries → use ES if relevant
+    4. Default to Vector search as fallback
+    5. ALWAYS include a data query processor (ES or Vector) when ChartGenerator is needed
+    6. ALWAYS include a data query processor for follow-up questions that reference previous data
 
-    IMPORTANT:
-    - PRIORITY: ES Schema is PREFERRED - if es_schema contains relevant data for the query, use EsQueryProcessor even if metadata_found = True
-    - Follow-up questions should ALWAYS regenerate data, even if previous data exists in conversation
-    - Check conversation_history for existing elastic data/query results - if this is a follow-up, regenerate anyway
-    - Analyze conversation_history to determine if current query needs fresh data retrieval or can build on previous results
-    - PREFER EsQueryProcessor over VectorQueryProcessor when es_schema actually contains indices and columns that are relevant to the user's query
-    - Only use VectorQueryProcessor if es_schema does NOT have relevant data but metadata_found = True
-    - For ALL follow-up questions that reference previous data or request changes, rerun appropriate search processors
-    - If vector or normal JSON data doesn't exist in context but is needed, always include the appropriate processor
-    - For queries about weather, external APIs, current events, or topics not in the schema, skip query processors but still include SummarySignature
+    Always include SummarySignature. Include ChartGenerator based on user intent.
     """
     user_query: str = dspy.InputField(desc="User's original question")
-    detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature including conversation context and whether this is a follow-up question")
-    metadata_found: bool = dspy.InputField(desc="Whether vector metadata was found - consider VectorQueryProcessor only if es_schema is not relevant")
-    metadata_summary: str = dspy.InputField(desc="Summary of metadata search results")
-    es_schema: str = dspy.InputField(desc="Available Elasticsearch schema with indices and columns - PRIORITY CHECK: if this schema contains data relevant to the user query, PREFER EsQueryProcessor over VectorQueryProcessor")
-    conversation_history: List[Dict] = dspy.InputField(desc="Previous conversation messages for context - REQUIRED. Analyze this to identify follow-up questions, check if elastic data/query results exist, determine if current query needs fresh data retrieval, references previous results, or requires different search approach based on conversation flow")
+    detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature - check if this indicates analytics/reports/analysis type questions that would benefit from ES structured data, or if user references previous data/charts")
+    context_summary: str = dspy.InputField(desc="Summary of relevant context from conversation history, including any previous queries, data sources used, and results")
+    es_schema: str = dspy.InputField(desc="Available Elasticsearch schema with indices and columns - check if this schema contains data relevant to the user query")
 
-    workflow_plan: List[str] = dspy.OutputField(desc="Ordered list of signatures to execute. Options: 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartGenerator'. MUST ALWAYS include 'SummarySignature'. CRITICAL: PREFER EsQueryProcessor when es_schema has relevant data, even if metadata_found = True. For follow-up questions (even visualization changes), ALWAYS include appropriate query processors to regenerate data. PRIORITY: If this is a follow-up question or elastic data/query results don't exist in conversation_history or are insufficient, include appropriate query processors to regenerate data. Consider conversation_history: if user asks follow-up questions needing fresh data, different time periods, visualization changes, or missing vector/JSON data, include appropriate query processors even if similar searches were done before. For queries about external topics not in schema, use ['SummarySignature'] or ['SummarySignature', 'ChartGenerator'] if chart needed.")
-    reasoning: str = dspy.OutputField(desc="Detailed reasoning for the chosen workflow. MUST explain: 1) Whether this is a follow-up question based on conversation_history analysis 2) Analysis of existing data in conversation_history (elastic data, query results, vector/JSON data) 3) How conversation_history influenced the decision 4) Whether fresh data retrieval is needed based on follow-up nature, missing context or conversation needs 5) PRIORITY: ES Schema relevance check - explain why EsQueryProcessor is preferred when es_schema contains relevant data 6) Vector metadata consideration only if es_schema is not relevant 7) Why SummarySignature is included (required). For follow-up questions, ALWAYS explain why data regeneration is needed even if previous data exists. If regenerating searches due to follow-up nature, missing data or conversation context, explain specifically what triggers regeneration.")
-    primary_data_source: Literal['elasticsearch', 'vector', 'hybrid', 'none'] = dspy.OutputField(desc="Primary data source for this query - prefer 'elasticsearch' when es_schema contains relevant data, use 'vector' only if es_schema is not relevant, use 'none' if no data retrieval is needed or neither schema matches query")
+    workflow_plan: List[str] = dspy.OutputField(desc="Ordered list of signatures to execute. Options: 'EsQueryProcessor', 'VectorQueryProcessor', 'SummarySignature', 'ChartGenerator'. MUST ALWAYS include 'SummarySignature'. CRITICAL: ALWAYS include a data query processor (ES or Vector) when ChartGenerator is needed or when user references previous data. Prefer ES for analytics/reports/analysis questions when schema allows. Include ChartGenerator based on user intent.")
+    reasoning: str = dspy.OutputField(desc="Reasoning for workflow choice: 1) Previous query context analysis 2) Analytics/reports question analysis from detailed_analysis 3) Whether user references previous data requiring fresh retrieval 4) ES schema relevance 5) Data source decision 6) Why data query processor is included 7) Why SummarySignature included 8) Chart consideration")
+    primary_data_source: Literal['elasticsearch', 'vector', 'none'] = dspy.OutputField(desc="Primary data source - prefer 'elasticsearch' for analytics/reports questions when schema allows, maintain consistency with previous queries, or use 'vector' as fallback. Use 'none' only if no data retrieval is needed (rare cases)")
 
 
 class EsQueryProcessor(dspy.Signature):
@@ -75,11 +47,8 @@ class EsQueryProcessor(dspy.Signature):
     """
     user_query: str = dspy.InputField(desc="User's question")
     detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
+    context_summary: str = dspy.InputField(desc="Summary of relevant context from conversation history")
     es_schema: str = dspy.InputField(desc="Elastic schema showing available fields")
-    conversation_history: Optional[List[Dict]] = dspy.InputField(
-        desc="Previous conversation messages for context",
-        default=None
-    )
     es_instructions = dspy.InputField(desc="Elasticsearch query instructions")
 
     reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about the query and column selection")
@@ -92,14 +61,11 @@ class EsQueryProcessor(dspy.Signature):
 class VectorQueryProcessor(dspy.Signature):
     """
     Simple vector search processor. Return a string which can then be converted to embedding to perform vector search.
-     Depends on ThinkingSignature to generate the query string and user query and past conversation.
+    Depends on ThinkingSignature to generate the query string and user query and context.
     """
     user_query: str = dspy.InputField(desc="User's question")
-    detailed_user_query: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
-    conversation_history: Optional[List[Dict]] = dspy.InputField(
-        desc="Previous conversation messages for context",
-        default=None
-    )
+    detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
+    context_summary: str = dspy.InputField(desc="Summary of relevant context from conversation history")
 
     reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about vector search")
     vector_query: str = dspy.OutputField(desc="Generated vector search query string to be converted to embedding to perform vector search")
@@ -109,20 +75,18 @@ class VectorQueryProcessor(dspy.Signature):
 class SummarySignature(dspy.Signature):
     """
     Summarizes results and conversation using data from elastic search or vector search.
+    Generates purely text-based summaries without any code, file references, or image descriptions.
     """
     user_query: str = dspy.InputField(desc="User's question")
     detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature including conversation context")
-    conversation_history: Optional[List[Dict]] = dspy.InputField(
-        desc="Conversation history as a list of messages",
-        default=None
-    )
+    context_summary: str = dspy.InputField(desc="Summary of relevant context from conversation history")
     json_results: str = dspy.InputField(
         desc="JSON results from ElasticSearch or Vector query processor - contains the actual data to analyze and summarize",
         default=""
     )
 
     reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about the summary based on the query results and conversation context")
-    summary: str = dspy.OutputField(desc="Comprehensive summary that directly answers the user query using the provided search results (elastic or vector) and conversation context")
+    summary: str = dspy.OutputField(desc="Comprehensive text-based summary that directly answers the user query using the provided search results. MUST be purely textual - no code snippets, file references, image descriptions, or technical formatting. Focus on insights, findings, and explanations in natural language.")
 
 
 class ChartGenerator(dspy.Signature):
@@ -130,7 +94,8 @@ class ChartGenerator(dspy.Signature):
     Generates complete Highcharts configuration from data and user query.
     """
     user_query: str = dspy.InputField(desc="User's question")
-    detailed_user_query: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
+    detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
+    context_summary: str = dspy.InputField(desc="Summary of relevant context from conversation history")
     json_results: str = dspy.InputField(desc="JSON data to visualize")
 
     needs_chart: bool = dspy.OutputField(desc="Does the user want a chart?")
@@ -139,19 +104,3 @@ class ChartGenerator(dspy.Signature):
     y_axis_column: str = dspy.OutputField(desc="Column name for y-axis")
     chart_title: str = dspy.OutputField(desc="Chart title")
     reasoning: str = dspy.OutputField(desc="Why this chart configuration was chosen")
-
-
-class DocumentMetadataExtractor(dspy.Signature):
-    """
-    Simple metadata extraction from documents.
-    """
-    document_text: str = dspy.InputField(desc="Full text content of the document")
-    filename: str = dspy.InputField(desc="Original filename of the document")
-
-    document_title: str = dspy.OutputField(desc="Document title")
-    document_type: str = dspy.OutputField(desc="Type of document")
-    main_topics: List[str] = dspy.OutputField(desc="Main topics covered")
-    key_entities: List[str] = dspy.OutputField(desc="Important entities mentioned")
-    language: str = dspy.OutputField(desc="Primary language of the document")
-    summary: str = dspy.OutputField(desc="Brief summary")
-    keywords: List[str] = dspy.OutputField(desc="Key terms")
