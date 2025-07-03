@@ -84,7 +84,7 @@ class ConversationService:
 
     def add_assistant_response(self, session_id: str, response: Any, message_id: str,
                               es_query: Dict = None, user_message_id: str = None) -> str:
-        """Add an assistant response to conversation history."""
+        """Add an assistant response to conversation history with filtered data."""
         redis_key = f"{self._redis_prefix}{session_id}"
         conversation_data = redis_client.hgetall(redis_key)
 
@@ -99,25 +99,31 @@ class ConversationService:
                 messages = []
             created_at = conversation_data.get('created_at', datetime.now().isoformat())
 
-        # Prepare response data
+        # Filter response to only include essential fields
+        filtered_content = {}
+
         if isinstance(response, dict):
-            content = response.get('response', str(response))
-            metadata = {
-                'query_type': response.get('query_type'),
-                'database': response.get('database'),
-                'chart_type': response.get('chart_type'),
-                'total_results': response.get('total_results')
+            # Only save specific fields, NOT the actual query results
+            essential_fields = {
+                'detailed_analysis': response.get('detailed_analysis'),
+                'user_query': response.get('user_query'),
+                'elastic_query': response.get('elastic_query'),
+                'elastic_index': response.get('elastic_index'),
+                'vector_query': response.get('vector_query'),
+                'summary': response.get('summary')
             }
+
+            # Only include fields that have values
+            filtered_content = {k: v for k, v in essential_fields.items() if v is not None}
         else:
-            content = str(response)
-            metadata = {}
+            # If response is not a dict, just store the summary text
+            filtered_content = {'summary': str(response)}
 
         message_data = {
             'role': 'assistant',
-            'content': content,
+            'content': filtered_content,
             'message_id': message_id,
-            'timestamp': datetime.now().isoformat(),
-            'metadata': metadata
+            'timestamp': datetime.now().isoformat()
         }
 
         if user_message_id:
@@ -136,24 +142,20 @@ class ConversationService:
         redis_client.hset(redis_key, mapping=update_data)
         redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
 
-        # Store ES query if provided
+        # Store ES query if provided (separate from conversation history)
         if es_query and user_message_id:
-            # Extract index name from es_query if available, otherwise use default
-            index_name = "unknown"  # Default fallback
+            index_name = "unknown"
             if isinstance(es_query, dict):
-                # Try to extract index from various possible locations in the query
                 if 'index' in es_query:
                     index_name = es_query['index']
                 elif 'index_name' in es_query:
                     index_name = es_query['index_name']
                 else:
-                    # If no index specified, try to infer from query structure
-                    # For vehicle queries, use the most common index
                     index_name = "vehicle_summary_llm_chatbot"
 
             store_message_query(session_id, user_message_id, es_query, index_name)
 
-        logger.debug(f"Added assistant response to conversation {session_id} with message_id {message_id}")
+        logger.debug(f"Added filtered assistant response to conversation {session_id} with message_id {message_id}")
         return message_id
 
     def clear_conversation(self, session_id: str) -> bool:

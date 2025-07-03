@@ -35,13 +35,19 @@ class QueryAgent(IQueryAgent):
         self.config = config_manager.config
 
     def _parse_history(self, conversation_history):
-        """Parse conversation history."""
+        """Parse conversation history and return only last 3 messages."""
         if not conversation_history:
             return None
         try:
             if isinstance(conversation_history, str):
-                return json.loads(conversation_history)
-            return conversation_history
+                parsed = json.loads(conversation_history)
+            else:
+                parsed = conversation_history
+
+            # Return only the last 3 messages to limit context size
+            if isinstance(parsed, list) and len(parsed) > 3:
+                return parsed[-3:]
+            return parsed
         except:
             return None
 
@@ -195,11 +201,7 @@ class QueryAgent(IQueryAgent):
                     raw_result=response_dict
                 )
 
-                # Convert to markdown
-                if query_result.data:
-                    markdown_content = convert_json_to_markdown(query_result.data, "Vector Search Results")
-                    query_result.markdown_content = markdown_content
-
+                # Do NOT convert vector results to markdown - keep as raw data only
                 logger.info(f"✅ Vector query completed successfully with {len(query_result.data)} results")
                 return query_result
             else:
@@ -307,8 +309,7 @@ class QueryAgent(IQueryAgent):
                 elif signature_name == 'VectorQueryProcessor':
                     query_result = self._execute_vector_query(user_query, thinking_result.detailed_analysis, thinking_result.context_summary)
                     yield "data", query_result.data
-                    if hasattr(query_result, 'markdown_content'):
-                        yield "markdown_results", query_result.markdown_content
+                    # No markdown conversion for vector query results
 
                 elif signature_name == 'SummarySignature':
                     json_data = json.dumps(query_result.data) if query_result and query_result.data else "[]"
