@@ -7,14 +7,15 @@ class ThinkingSignature(dspy.Signature):
     """
     Analyzes user query in context of conversation history to understand what they're really asking for.
     Uses previous conversation messages to better understand context, references, and follow-up questions.
+    Generates search terms and concepts optimized for metadata matching in vector store.
     """
     user_query: str = dspy.InputField(desc="User's current question or request")
     conversation_history: List[Dict] = dspy.InputField(desc="Previous conversation messages for context - REQUIRED. Analyze this to understand references, follow-ups, and conversation flow")
 
     detailed_analysis: str = dspy.OutputField(desc="Detailed analysis of what the user is trying to ask, incorporating context from conversation history")
     intent: str = dspy.OutputField(desc="Primary intent behind the user's query, considering conversation context and any references to previous messages")
-    key_concepts: List[str] = dspy.OutputField(desc="Key concepts and entities the user is asking about, including any referenced from conversation history")
-    search_terms: List[str] = dspy.OutputField(desc="Relevant search terms extracted from both the current query and conversation context")
+    key_concepts: List[str] = dspy.OutputField(desc="Key concepts and entities optimized for metadata search. Include document types (Legal Code, Government Gazette, Legislative Act), legal terms, law names (Bharatiya Nyaya Sanhita, Bharatiya Nagarik Suraksha Sanhita, Bharatiya Sakshya Adhiniyam), specific topics (criminal law, evidence, procedure), and general legal concepts that would appear in document metadata fields")
+    search_terms: List[str] = dspy.OutputField(desc="Search terms optimized for fuzzy matching in metadata fields including: filenames (BNS, BNSS, BSA, Gazette), document titles, main topics, keywords, and summary content. Include variations, abbreviations, and related terms that would help find relevant documents even with partial matches")
     context_summary: str = dspy.OutputField(desc="Summary of relevant context from conversation history that affects understanding of current query")
 
 
@@ -87,7 +88,8 @@ class EsQueryProcessor(dspy.Signature):
 
 class VectorQueryProcessor(dspy.Signature):
     """
-    Simple vector search processor.
+    Simple vector search processor. Return a string which can then be converted to embedding to perform vector search.
+     Depends on ThinkingSignature to generate the query string and user query and past conversation.
     """
     user_query: str = dspy.InputField(desc="User's question")
     detailed_user_query: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
@@ -97,27 +99,27 @@ class VectorQueryProcessor(dspy.Signature):
     )
 
     reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about vector search")
-    vector_query: str = dspy.OutputField(desc="Vector search query text")
+    vector_query: str = dspy.OutputField(desc="Generated vector search query string to be converted to embedding to perform vector search")
     data_json: str = dspy.OutputField(desc="Raw results as JSON")
 
 
 class SummarySignature(dspy.Signature):
     """
-    Summarizes results and conversation.
+    Summarizes results and conversation using data from elastic search or vector search.
     """
     user_query: str = dspy.InputField(desc="User's question")
-    detailed_user_query: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature")
+    detailed_analysis: str = dspy.InputField(desc="Detailed analysis from ThinkingSignature including conversation context")
     conversation_history: Optional[List[Dict]] = dspy.InputField(
         desc="Conversation history as a list of messages",
         default=None
     )
     json_results: str = dspy.InputField(
-        desc="JSON results from query processor",
+        desc="JSON results from ElasticSearch or Vector query processor - contains the actual data to analyze and summarize",
         default=""
     )
 
-    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about the summary")
-    summary: str = dspy.OutputField(desc="Summary of the conversation and results")
+    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning about the summary based on the query results and conversation context")
+    summary: str = dspy.OutputField(desc="Comprehensive summary that directly answers the user query using the provided search results (elastic or vector) and conversation context")
 
 
 class ChartGenerator(dspy.Signature):

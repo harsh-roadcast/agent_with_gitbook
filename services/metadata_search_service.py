@@ -31,7 +31,7 @@ def search_vector_metadata(search_terms: List[str], key_concepts: List[str]) -> 
                         {
                             "multi_match": {
                                 "query": " ".join(all_terms),
-                                "fields": ["filename", "document_title", "main_topics", "keywords", "summary"],
+                                "fields": ["filename", "document_title", "main_topics", "keywords", "summary", "text"],
                                 "type": "best_fields",
                                 "fuzziness": "AUTO"
                             }
@@ -51,17 +51,19 @@ def search_vector_metadata(search_terms: List[str], key_concepts: List[str]) -> 
                 }
             },
             "size": 10,
-            "_source": ["filename", "document_title", "main_topics", "keywords", "summary"]
+            "_source": ["filename", "document_title", "main_topics", "keywords", "summary", "text"]
         }
 
+        print(f"Metadata search query: {metadata_query}")
         # Search in metadata index (assuming it exists)
         try:
-            response = es_client.search(index="document_metadata", body=metadata_query)
+            response = es_client.search(index="docling_documents", body=metadata_query)
             hits = response.get('hits', {}).get('hits', [])
 
             metadata_found = len(hits) > 0
             relevant_documents = len(hits)
-
+            print(f"Metadata search hits: {len(hits)}")
+            print(f"Metadata search hits: {relevant_documents}")
             if metadata_found:
                 # Create summary of found metadata
                 titles = [hit['_source'].get('document_title', 'Unknown') for hit in hits[:5]]

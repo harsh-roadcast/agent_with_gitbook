@@ -20,7 +20,7 @@ class DSPyQueryExecutor(IQueryExecutor):
 
     def __init__(self):
         """Initialize the query executor with DSPy agents."""
-        self.vector_agent = dspy.ReAct(VectorQueryProcessor, tools=[execute_vector_query])
+        self.vector_agent = dspy.Predict(VectorQueryProcessor)  # Changed from ReAct to Predict since we're calling execute_vector_query manually
         # Replace ReAct with simple Predict for ES queries - ReAct is causing 60+ second delays
         self.es_agent = dspy.Predict(EsQueryProcessor)
 
@@ -59,11 +59,51 @@ class DSPyQueryExecutor(IQueryExecutor):
         """Execute vector search query."""
         logger.info(f"Processing Vector query for: {user_query}")
 
+        # Use the VectorQueryProcessor to generate proper search string
         result = self.vector_agent(
             user_query=user_query,
-            detailed_user_query=user_query,  # Add the missing field - use user_query as detailed analysis
+            detailed_user_query=detailed_analysis,  # Use actual detailed_analysis from ThinkingSignature
             conversation_history=conversation_history
         )
+        print(f"🤖 Generated vector query result: {result}")
+        # Extract the generated vector query string and pass to execute_vector_query
+        vector_query_string = result.vector_query if hasattr(result, 'vector_query') else user_query
+        print(f"🔍 Generated vector query string: {vector_query_string}")
+        # Call execute_vector_query with proper parameters
+        try:
+            vector_search_params = {
+                'query_text': vector_query_string,
+                'index': 'docling_documents',  # Your vector index
+                'size': 25
+            }
+
+            # Execute the actual vector search
+            vector_result = execute_vector_query(vector_search_params)
+
+            if vector_result.get('success'):
+                # Extract the actual response data from ObjectApiResponse (same as ES handling)
+                es_response = vector_result['result']
+
+                # Convert ObjectApiResponse to dict if needed
+                if hasattr(es_response, 'body'):
+                    response_dict = es_response.body
+                elif hasattr(es_response, 'to_dict'):
+                    response_dict = es_response.to_dict()
+                else:
+                    # If it's already a dict, use it directly
+                    response_dict = dict(es_response)
+
+                # Update the result with actual search data
+                result.data_json = json.dumps(response_dict)
+                logger.info(f"✅ Vector search completed successfully with query: '{vector_query_string}'")
+                logger.info(f"✅ Successfully extracted {len(response_dict.get('hits', {}).get('hits', []))} vector search results")
+            else:
+                logger.error(f"Vector search failed: {vector_result}")
+                result.data_json = json.dumps({"hits": {"hits": []}})
+
+        except Exception as e:
+            logger.error(f"Error executing vector search: {e}", exc_info=True)
+            result.data_json = json.dumps({"hits": {"hits": []}})
 
         return self._parse_query_result(result, DatabaseType.VECTOR)
 

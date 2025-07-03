@@ -161,7 +161,7 @@ class QueryAgent(IQueryAgent):
         try:
             result = self.summary_processor(
                 user_query=user_query,
-                detailed_user_query=detailed_analysis,
+                detailed_analysis=detailed_analysis,  # Fixed: use detailed_analysis instead of detailed_user_query
                 conversation_history=conversation_history,
                 json_results=json_data
             )

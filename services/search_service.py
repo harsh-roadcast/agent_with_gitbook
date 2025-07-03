@@ -75,7 +75,7 @@ def execute_vector_query(es_query: dict) -> dict:
 
     query_text = es_query.get('query_text', '')
     index = es_query.get('index', 'docling_documents')
-    size = min(es_query.get('size', 10), 25)
+    size = max(es_query.get('size', 100), 100)
 
     # Generate embedding
     embedding = generate_embedding(query_text)
