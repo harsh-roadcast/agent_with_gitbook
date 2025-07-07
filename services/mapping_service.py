@@ -1,4 +1,5 @@
 """Service for managing Elasticsearch index mappings in Redis."""
+import json
 import logging
 from typing import Dict, List
 

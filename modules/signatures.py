@@ -1,4 +1,4 @@
-from typing import List, Dict, Literal
+from typing import List, Dict, Literal, Any
 
 import dspy
 
@@ -8,6 +8,9 @@ class ThinkingSignature(dspy.Signature):
     Analyzes user query in context of conversation history to understand what they're really asking for.
     Uses previous conversation messages to better understand context, references, and follow-up questions.
     """
+    system_prompt: str = dspy.InputField(
+        desc="System prompt to guide the analysis of user intent based on their query and conversation context. Should define the role of the analyzer and how to interpret user requests in relation to previous messages")
+
     user_query: str = dspy.InputField(
         desc="The user's current question or request that needs to be analyzed and understood in context")
     conversation_history: List[Dict] = dspy.InputField(
@@ -19,38 +22,45 @@ class ThinkingSignature(dspy.Signature):
         desc="Primary purpose behind the user's query in simple terms (e.g., 'data analysis', 'chart creation', 'follow-up visualization', 'information retrieval', 'comparison analysis')")
     context_summary: str = dspy.OutputField(
         desc="Brief summary (6-8 lines max) of relevant conversation context: previous data sources (ES/Vector), query types executed, data retrieved, visualizations created, and ongoing analytical themes affecting current request")
+    is_within_context: bool = dspy.OutputField(
+        desc="Boolean indicating whether the user query is within the scope and context of the system prompt. True if the query relates to the agent's defined responsibilities and capabilities, False if the query is outside the agent's domain or asking for unrelated functionality")
 
 
 class QueryWorkflowPlanner(dspy.Signature):
     """
-    Decides workflow based on conversation context, query type, and data availability.
+    Decides workflow based on conversation context, query type, and data availability
+    , whether es_schema and vector_index are available or not needs to be considered.
 
     Decision Logic:
     1. Check context_summary for previous ES/Vector queries → maintain consistency
-    2. Analyze detailed_analysis for analytics/reports/analysis questions → prefer ES if schema allows
-    3. Check for information retrieval requests (legal, procedural, guidelines, how-to) → use Vector search
+    2. Analyze detailed_analysis for analytics/reports/analysis questions → prefer ES if schema allows and es_schema_available
+    3. Check for information retrieval requests (legal, procedural, guidelines, how-to) → use Vector search if vector_index_available
     4. Check es_schema relevance for new structured data queries → use ES if relevant
-    5. Default to Vector search as fallback for information needs
+    5. If no relevant data sources available, return is_within_context as False and system will return error
     6. ALWAYS include a data query processor (ES or Vector) when ChartGenerator is needed
     7. ALWAYS include a data query processor for follow-up questions that reference previous data
     8. ALWAYS include a data query processor for information retrieval requests
 
     Always include SummarySignature. Include ChartGenerator based on user intent.
     """
+    system_prompt: str = dspy.InputField(desc="System prompt to guide workflow planning decisions based on user query and context, also defines the responsibilities of the workflow planner")
     user_query: str = dspy.InputField(desc="The original user question that needs workflow planning")
     detailed_analysis: str = dspy.InputField(
         desc="Detailed analysis from ThinkingSignature containing user intent, context understanding, and indicators of analytics/reports questions, information retrieval requests, or references to previous data/charts")
     context_summary: str = dspy.InputField(
         desc="Conversation context including previous query patterns (ES/Vector usage), data sources accessed, results obtained, and ongoing analytical themes influencing data source selection")
-    es_schema: str = dspy.InputField(
+    es_schema: List[Dict[str, Any]] = dspy.InputField(
         desc="Complete Elasticsearch schema definition showing available indices, field mappings, and data types. Analyze to determine if relevant structured data exists for the user's analytical needs")
-
+    es_schema_available: bool = dspy.InputField(desc="Boolean indicating whether the Elasticsearch schema is available for querying. True if schema exists, False if not")
+    vector_index_available: bool = dspy.InputField(desc="Boolean indicating whether the vector index is available for querying")
     workflow_plan: List[str] = dspy.OutputField(
         desc="Ordered execution sequence using: 'EsQueryProcessor' (structured data queries), 'VectorQueryProcessor' (semantic document search for information retrieval), 'SummarySignature' (ALWAYS required for text analysis), 'ChartGenerator' (for visualizations). CRITICAL: Always include data processor when ChartGenerator needed, user references previous data, OR for information retrieval requests (legal, procedural, guidelines, how-to)")
     reasoning: str = dspy.OutputField(
-        desc="Concise justification covering: 1) Context analysis 2) Analytics detection 3) Information retrieval detection 4) Data reference handling 5) Schema relevance 6) Data source selection 7) Processor inclusion rationale 8) Summary necessity 9) Chart generation decision")
+        desc="Concise reason tracing (2-3 lines max) explaining workflow decisions including: why specific data processors were chosen, how user intent and context influenced data source selection, and rationale for including/excluding ChartGenerator or SummarySignature. Should clarify how the plan addresses user needs and maintains conversation continuity")
     primary_data_source: Literal['elasticsearch', 'vector', 'none'] = dspy.OutputField(
         desc="Selected data source: 'elasticsearch' for structured analytics/reports when schema matches or previous ES usage detected, 'vector' for information retrieval (legal, procedural, guidelines, how-to) or as fallback, 'none' ONLY for pure conversational queries not requiring any information retrieval")
+    is_within_context: bool = dspy.OutputField(
+        desc="Boolean indicating whether the user query and planned workflow are within the scope and context of the system prompt. True if the workflow aligns with the agent's defined responsibilities and capabilities, False if the query or required workflow is outside the agent's domain")
 
 
 class EsQueryProcessor(dspy.Signature):
@@ -63,7 +73,7 @@ class EsQueryProcessor(dspy.Signature):
         desc="User intent analysis from ThinkingSignature providing context about what data aspects are needed and how the query should be structured")
     context_summary: str = dspy.InputField(
         desc="Conversation context including previous ES queries, data patterns accessed, and analytical themes to maintain consistency in data retrieval approach")
-    es_schema: str = dspy.InputField(
+    es_schema: List[Dict[str, Any]] = dspy.InputField(
         desc="Elasticsearch schema with indices, fields, and data types available for querying. Use to select "
              "appropriate index and optimize field selection, appropriate size limit, and query structure size limit can't be more than 100")
     es_instructions = dspy.InputField(
@@ -99,6 +109,9 @@ class SummarySignature(dspy.Signature):
     """
     Summarizes results and conversation using data from elastic search or vector search.
     Generates purely text-based summaries without any code, file references, or image descriptions.
+    if json_results is empty, it should return an error message indicating no data available for summarization.
+    Do not generate any code snippets, file references, JSON data, technical formatting, or image descriptions.
+    Do not generate any summary if json_results is empty or invalid.
     """
     user_query: str = dspy.InputField(
         desc="The original user question that needs to be answered through data analysis and summarization")

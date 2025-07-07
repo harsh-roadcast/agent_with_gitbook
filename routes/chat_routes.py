@@ -12,6 +12,8 @@ from sse_starlette.sse import EventSourceResponse
 from services.auth_service import get_current_user
 from services.conversation_service import ConversationService
 from agents.query_agent import QueryAgent
+from agents.agent_config import get_agent_config
+from modules.query_models import QueryRequest
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +139,26 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
     conversation_service.add_user_message(session_id, query, message_id)
     conversation_history = conversation_service.get_conversation_history(session_id)
 
+    # Get agent configuration based on model name - return error if not found
+    try:
+        agent_config = get_agent_config(model)
+    except ValueError as e:
+        logger.error(f"Agent not found for model '{model}': {e}")
+        # Return error immediately - no fallback
+        error_msg = f"Agent '{model}' not found. Available agents: {', '.join(['bolt_data_analyst', 'synco_agent', 'police_assistant'])}"
+        async for error_chunk in handle_critical_error(handler, "error", error_msg, session_id, message_id):
+            yield error_chunk
+        return
+
+    # Create QueryRequest with agent configuration
+    query_request = QueryRequest(
+        user_query=query,
+        system_prompt=agent_config.system_prompt,
+        conversation_history=conversation_history,
+        es_schemas=agent_config.es_schemas or [],
+        vector_db_index=agent_config.vector_db or "docling_documents"
+    )
+
     # Process query asynchronously - Initialize query agent (no parameters needed)
     query_agent = QueryAgent()
     assistant_response_stored = False
@@ -144,8 +166,7 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
     handler.log_timing("Starting async processing")
 
     async for field, value in query_agent.process_query_async(
-        user_query=query,
-        conversation_history=conversation_history,
+        request=query_request,
         session_id=session_id,
         message_id=message_id
     ):
@@ -158,7 +179,8 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
 
         # Handle critical errors immediately
         if handler.is_error_field(field, value):
-            yield handle_critical_error(handler, field, value, session_id, message_id)
+            async for error_chunk in handle_critical_error(handler, field, value, session_id, message_id):
+                yield error_chunk
             return
 
         # Format and send field to frontend
@@ -211,10 +233,10 @@ async def chat_completions(request: Request, user_info: Dict[str, Any] = Depends
     message_id = messages[-1]['message_id']
     stream = data.get("stream", False)
     session_id = data.get("session_id", "default")
-    model = data.get("model", "default")
+    model = data.get("model", "general_assistant")  # Default to general_assistant
     user_id = user_info.get('user_id')
 
-    logger.info(f"Chat completion request from user {user_id}: stream={stream}, session={session_id}")
+    logger.info(f"Chat completion request from user {user_id}: stream={stream}, session={session_id}, model={model}")
 
     if stream:
         return EventSourceResponse(generate_stream(user_message, session_id, user_info, model=model, message_id=message_id))
@@ -227,13 +249,36 @@ async def handle_non_streaming_request(user_message: str, session_id: str, user_
     conversation_service.add_user_message(session_id, user_message, message_id)
     conversation_history = conversation_service.get_conversation_history(session_id)
 
+    # Get agent configuration based on model name - return error if not found
+    try:
+        agent_config = get_agent_config(model)
+    except ValueError as e:
+        logger.error(f"Agent not found for model '{model}': {e}")
+        # Return error immediately - no fallback
+        error_response = {
+            "error": {
+                "message": f"Agent '{model}' not found. Available agents: {', '.join(['bolt_data_analyst', 'synco_agent', 'police_assistant'])}",
+                "type": "invalid_request_error",
+                "code": "agent_not_found"
+            }
+        }
+        return JSONResponse(content=error_response, status_code=400)
+
+    # Create QueryRequest with agent configuration
+    query_request = QueryRequest(
+        user_query=user_message,
+        system_prompt=agent_config.system_prompt,
+        conversation_history=conversation_history,
+        es_schemas=agent_config.es_schemas or [],
+        vector_db_index=agent_config.vector_db or "docling_documents"
+    )
+
     # Initialize query agent (no parameters needed)
     query_agent = QueryAgent()
     result_dict = {}
 
     async for field, value in query_agent.process_query_async(
-        user_query=user_message,
-        conversation_history=conversation_history,
+        request=query_request,
         session_id=session_id,
         message_id=message_id
     ):

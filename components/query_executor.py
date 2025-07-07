@@ -25,7 +25,9 @@ class DSPyQueryExecutor(IQueryExecutor):
         self.es_agent = dspy.Predict(EsQueryProcessor)
 
     @monitor_performance("query_execution")
-    def execute_query(self, database_type: DatabaseType, user_query: str, schema: str, instructions: str, conversation_history: Optional[List[Dict]] = None, detailed_analysis: Optional[str] = None) -> QueryResult:
+    def execute_query(self, database_type: DatabaseType, user_query: str, schema: List[Dict[str, Any]] | None,
+                      instructions: str | None, conversation_history: Optional[List[Dict]] = None,
+                      detailed_analysis: Optional[str] = None, vector_db_index: str = None) -> QueryResult:
         """
         Execute query on the specified database.
 
@@ -45,7 +47,7 @@ class DSPyQueryExecutor(IQueryExecutor):
         """
         try:
             if database_type == DatabaseType.VECTOR:
-                return self._execute_vector_query(user_query, schema, instructions, conversation_history, detailed_analysis)
+                return self._execute_vector_query(user_query, conversation_history, detailed_analysis, vector_db_index)
             elif database_type == DatabaseType.ELASTIC:
                 return self._execute_elastic_query(user_query, schema, instructions, conversation_history, detailed_analysis)
             else:
@@ -55,7 +57,7 @@ class DSPyQueryExecutor(IQueryExecutor):
             logger.error(f"Error executing query on {database_type}: {e}", exc_info=True)
             raise QueryExecutionError(f"Failed to execute query: {e}") from e
 
-    def _execute_vector_query(self, user_query: str, schema: str, instructions: str, conversation_history: Optional[List[Dict]] = None, detailed_analysis: Optional[str] = None) -> QueryResult:
+    def _execute_vector_query(self, user_query: str, conversation_history: Optional[List[Dict]] = None, detailed_analysis: Optional[str] = None, vector_db_index: str = None) -> QueryResult:
         """Execute vector search query."""
         logger.info(f"Processing Vector query for: {user_query}")
 
@@ -73,7 +75,7 @@ class DSPyQueryExecutor(IQueryExecutor):
         try:
             vector_search_params = {
                 'query_text': vector_query_string,
-                'index': 'docling_documents',  # Your vector index
+                'index': vector_db_index,  # Your vector index
                 'size': 25
             }
 
@@ -107,7 +109,7 @@ class DSPyQueryExecutor(IQueryExecutor):
 
         return self._parse_query_result(result, DatabaseType.VECTOR)
 
-    def _execute_elastic_query(self, user_query: str, schema: str, instructions: str, conversation_history: Optional[List[Dict]] = None, detailed_analysis: Optional[str] = None) -> QueryResult:
+    def _execute_elastic_query(self, user_query: str, schema: List[Dict[str, Any]], instructions: str, conversation_history: Optional[List[Dict]] = None, detailed_analysis: Optional[str] = None) -> QueryResult:
         """Execute Elasticsearch query."""
         start_time = time.time()
         logger.info(f"🚀 [TIMING] Starting DSPy ES agent processing at {start_time}")
