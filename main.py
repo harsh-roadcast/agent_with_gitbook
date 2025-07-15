@@ -20,6 +20,7 @@ from routes import (
 from services.auth_service import generate_startup_token
 from services.llm_service import init_llm
 from services.mapping_service import initialize_index_schema
+from middleware.auth_context import AuthContextMiddleware
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,8 +30,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("DSPy Agent API starting up")
-    initialize_index_schema()
     generate_startup_token()  # Generate and print token on startup
+
+    initialize_index_schema()
     yield
     # Shutdown
     logger.info("DSPy Agent API shutting down")
@@ -50,6 +52,9 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # Initialize DSPy with local LLM
 llm = init_llm(model_name="ollama_chat/qwen3:8b")
+
+# Add authorization context middleware (must be added before other middleware)
+app.add_middleware(AuthContextMiddleware)
 
 # Add CORS middleware
 app.add_middleware(

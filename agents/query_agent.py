@@ -183,29 +183,6 @@ class QueryAgent(IQueryAgent):
             chart_html=chart_html
         )
 
-    def _generate_chart(self, query_result: QueryResult, user_query: str, detailed_analysis: str, context_summary: str) -> tuple:
-        """Generate chart using existing chart generator."""
-        try:
-            json_data = json.dumps(query_result.data)
-
-            # Use the result processor's chart generation
-            chart_config = self.result_processor.generate_chart(
-                query_result=query_result,
-                user_query=user_query,
-                detailed_analysis=detailed_analysis,
-                context_summary=context_summary
-            )
-
-            if chart_config:
-                chart_html = generate_chart_from_config(chart_config)
-                return chart_config, chart_html
-
-            return None, None
-
-        except Exception as e:
-            logger.error(f"Chart generation failed: {e}")
-            return None, None
-
     def _empty_query_result(self) -> QueryResult:
         """Return empty query result."""
         return QueryResult(
@@ -271,7 +248,7 @@ class QueryAgent(IQueryAgent):
                         instructions=self.config.es_instructions,
                         conversation_history=request.conversation_history,
                         detailed_analysis=thinking_result.detailed_analysis,
-                    vector_db_index=request.vector_db_index,
+                        vector_db_index=request.vector_db_index,
                     )
                     yield "data", query_result.data
                     if hasattr(query_result, 'markdown_content'):

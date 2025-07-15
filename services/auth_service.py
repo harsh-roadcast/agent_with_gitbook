@@ -8,6 +8,7 @@ from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from core.config import config_manager
+from util.context import set_user_info
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +61,15 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     """FastAPI dependency to get current authenticated user."""
     token = credentials.credentials
     user_info = authenticator.validate_token(token)
+
+    # Store user info in context for access throughout the request
+    set_user_info(user_info)
+
     return user_info
 
 def generate_startup_token() -> str:
     """Generate a token on startup and return it."""
-    token = authenticator.create_token()
+    token = authenticator.create_token(user_id="1", username="137")
     print(f"\n{'='*60}")
     print(f"🔑 AUTHENTICATION TOKEN (Valid for 24 hours)")
     print(f"{'='*60}")

@@ -5,13 +5,14 @@ from typing import List
 
 from elasticsearch import Elasticsearch
 from sentence_transformers import SentenceTransformer
+from util.context import get_authorization_header, get_user_info, get_request_id
 
 logger = logging.getLogger(__name__)
 
 # Global Elasticsearch client
 es_client = Elasticsearch(
-    [os.getenv('ES_HOST', 'https://62.72.41.235:9200')],
-    http_auth=(os.getenv('ES_USERNAME', 'elastic'), os.getenv('ES_PASSWORD', 'GGgCYcnpA_0R_fT5TfFY')),
+    [os.getenv('ES_HOST')],
+    http_auth=(os.getenv('ES_USERNAME'), os.getenv('ES_PASSWORD')),
     verify_certs=os.getenv('ES_VERIFY_CERTS', 'False').lower() == 'true',
     request_timeout=30
 )
@@ -30,8 +31,28 @@ def get_sentence_transformer_model():
 def execute_query(query_body: dict, index: str) -> dict:
     """Execute a standard Elasticsearch query"""
     start_time = time.time()
+
+    # Access context data
+    auth_header = get_authorization_header()
+    user_info = get_user_info()
+    request_id = get_request_id()
+
+    # Log context information
     logger.info(f"🔍 [TIMING] Starting ES query execution at {start_time}")
+    logger.info(f"📋 [REQUEST-{request_id}] Executing query for user: {user_info.get('username') if user_info else 'anonymous'}")
+    logger.info(f"🔑 Auth header present: {(auth_header)}")
     logger.info(f"Executing standard ES query on index '{index}': {query_body}")
+
+    # You can now use auth_header, user_info, or request_id for:
+    # - Adding user-specific filters to the query
+    # - Logging user actions
+    # - Implementing user-based access controls
+    # - Making authenticated requests to other services
+
+    # Example: Add user-based filtering (if needed)
+    if user_info and 'user_id' in user_info:
+        # You could modify the query to filter by user if needed
+        logger.info(f"Query executed by user_id: {user_info['user_id']}")
 
     # Remove any size parameters and force to 25
 
@@ -39,7 +60,9 @@ def execute_query(query_body: dict, index: str) -> dict:
 
     try:
         query_start = time.time()
-        result = es_client.search(index=index, body=query_body, request_timeout=30)
+        result = es_client.search(index=index, body=query_body, request_timeout=30, headers={'authorization': auth_header})
+        print(result.body)
+        print(f"query is {query_body}, index is {index}, headers are {auth_header}")
         query_end = time.time()
 
         total_hits = result.get('hits', {}).get('total', {})
@@ -84,7 +107,7 @@ def generate_embedding(text: str) -> List[float]:
 def execute_vector_query(es_query: dict) -> dict:
     """Execute a simple vector search query."""
     logger.info(f"Executing vector search: {es_query}")
-
+    auth_header = get_authorization_header()
     query_text = es_query.get('query_text', '')
     index = es_query.get('index', 'docling_documents')
     size = max(es_query.get('size', 100), 100)
@@ -108,7 +131,7 @@ def execute_vector_query(es_query: dict) -> dict:
         "_source": ["filename", "text", "chunk_id"]
     }
 
-    result = es_client.search(index=index, body=vector_query, request_timeout=30)
+    result = es_client.search(index=index, body=vector_query, request_timeout=30, headers={'authorization': auth_header})
     total_hits = result.get('hits', {}).get('total', {}).get('value', 0)
     logger.info(f"Vector search successful - found {total_hits} results")
     return {"success": True, "result": result, "query_type": "vector"}

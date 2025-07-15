@@ -69,10 +69,13 @@ class DocumentProcessor:
         """Create embedding for text."""
         return self.embedding_model.encode(text, convert_to_tensor=False).tolist()
 
-    def process_pdf_file(self, file_path: str, filename: str) -> Dict[str, Any]:
+    def process_pdf_file(self, file_path: str, filename: str, index_name: str = None) -> Dict[str, Any]:
         """Process PDF file - simplified version."""
         try:
             logger.info(f"Processing PDF: {filename}")
+
+            # Use provided index name or fallback to default
+            target_index = index_name or self.index_name
 
             # Extract text
             text = self.extract_text(file_path)
@@ -105,7 +108,7 @@ class DocumentProcessor:
                     }
 
                     self.es_client.index(
-                        index=self.index_name,
+                        index=target_index,
                         id=f"{filename}_chunk_{i}",
                         body=doc
                     )
@@ -119,7 +122,8 @@ class DocumentProcessor:
                 "filename": filename,
                 "total_chunks": len(chunks),
                 "indexed_chunks": success_count,
-                "extracted_metadata": metadata
+                "extracted_metadata": metadata,
+                "target_index": target_index
             }
 
         except Exception as e:

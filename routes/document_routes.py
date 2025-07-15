@@ -4,9 +4,10 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
 
 from services.auth_service import get_current_user
+from services.bulk_index_service import create_index_if_not_exists
 
 logger = logging.getLogger(__name__)
 
@@ -21,19 +22,60 @@ ALLOWED_EXTENSIONS = {".pdf"}
 
 @router.post("/documents/process")
 async def process_pdf_document(
+    index_name: str = Form(..., description="Name of the index to store the vectorized document data"),
     files: List[UploadFile] = File(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
     Process PDF document with vectorization using foreground processing and DSPy metadata extraction.
+    Takes in compulsory index name to index the vector data in that index.
+    If index doesn't exist, creates it.
 
     Args:
+        index_name: Required name of the Elasticsearch index to store document vectors
         files: PDF files to process
         current_user: Authenticated user information
 
     Returns:
         JSON response with processing results and extracted metadata
     """
+    # Validate index name
+    if not index_name or not index_name.strip():
+        raise HTTPException(status_code=400, detail="Index name is required")
+
+    index_name = index_name.strip().lower()
+
+    # Create index if it doesn't exist
+    try:
+        index_result = create_index_if_not_exists(
+            index_name=index_name,
+            mapping={
+                "properties": {
+                    "filename": {"type": "keyword"},
+                    "chunk_id": {"type": "integer"},
+                    "text": {"type": "text", "analyzer": "standard"},
+                    "embedding": {"type": "dense_vector", "dims": 384},
+                    "metadata": {
+                        "properties": {
+                            "upload_timestamp": {"type": "date"},
+                            "processing_method": {"type": "keyword"},
+                            "document_title": {"type": "text"},
+                            "document_type": {"type": "keyword"},
+                            "main_topics": {"type": "keyword"},
+                            "key_entities": {"type": "keyword"},
+                            "language": {"type": "keyword"},
+                            "summary": {"type": "text"},
+                            "keywords": {"type": "keyword"}
+                        }
+                    }
+                }
+            }
+        )
+        logger.info(f"Index preparation result: {index_result['message']}")
+    except Exception as e:
+        logger.error(f"Failed to create/check index {index_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Index creation failed: {str(e)}")
+
     # Validate file
     results = []
     for file in files:
@@ -62,22 +104,24 @@ async def process_pdf_document(
             temp_file_path = temp_file.name
 
         try:
-            logger.info(f"User {current_user.get('username')} processing PDF {file.filename} ({file_size_mb:.1f}MB) in foreground")
+            logger.info(f"User {current_user.get('username')} processing PDF {file.filename} ({file_size_mb:.1f}MB) in foreground with index '{index_name}'")
 
-            # Process the PDF with DSPy metadata extraction
-            result = document_processor.process_pdf_file(temp_file_path, file.filename)
+            # Process the PDF with DSPy metadata extraction and custom index
+            result = document_processor.process_pdf_file(temp_file_path, file.filename, index_name)
 
             if result["status"] == "success":
-                logger.info(f"Successfully processed PDF {file.filename} for user {current_user.get('username')}")
+                logger.info(f"Successfully processed PDF {file.filename} for user {current_user.get('username')} in index '{index_name}'")
 
                 # Get the extracted metadata
                 metadata = result.get("extracted_metadata", {})
 
-                results.append( {
+                results.append({
                     "message": "PDF processing completed successfully",
                     "filename": file.filename,
                     "file_size_mb": round(file_size_mb, 2),
                     "processing_method": "foreground_with_dspy",
+                    "index_name": index_name,
+                    "index_created": index_result.get("created", False),
                     "total_chunks": result["total_chunks"],
                     "indexed_chunks": result["indexed_chunks"],
                     "failed_chunks": result.get("failed_chunks", 0),
@@ -93,7 +137,8 @@ async def process_pdf_document(
                     "processing_details": {
                         "extraction_method": "docling_markdown",
                         "metadata_extraction": "dspy_ai_powered",
-                        "indexing_status": "completed" if result["indexed_chunks"] > 0 else "failed"
+                        "indexing_status": "completed" if result["indexed_chunks"] > 0 else "failed",
+                        "target_index": result.get("target_index", index_name)
                     }
                 })
             else:
