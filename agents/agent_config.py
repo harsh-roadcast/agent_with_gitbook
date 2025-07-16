@@ -18,7 +18,7 @@ def initialize_default_agents():
             "help users generate reports and insights from their vehicle and sensor data."
         ),
         es_schemas=[
-            {"schema": "vehicle_summary_llm_chatbot", "columns": [
+            {"schema": "vehicle_trip_summary", "columns": [
                 "avg_speed", "center", "crash", "device_id", "device_name", "distance",
                 "driving_safety_score", "driving_score", "end_lat", "end_lng", "end_odometer",
                 "end_position_id", "end_time", "end_time_date", "end_time_time", "engine_2_seconds",
@@ -41,7 +41,7 @@ def initialize_default_agents():
                 "start_time_date", "start_time_time", "steps", "stop_seconds", "summary_date",
                 "utilization"
             ]},
-            {"schema": "vehicle_trip_summary", "columns": [
+            {"schema": "summary_reports", "columns": [
                 "avg_speed", "crash", "device_id", "device_name", "distance", "driving_safety_score",
                 "driving_score", "duration", "end_battery", "end_battery_level", "end_lat",
                 "end_lng", "end_odometer", "end_position_id", "end_soc", "end_time", "end_time_date",
