@@ -34,27 +34,12 @@ def execute_query(query_body: dict, index: str) -> dict:
 
     # Access context data
     auth_header = get_authorization_header()
-    user_info = get_user_info()
-    request_id = get_request_id()
 
     # Log context information
     logger.info(f"🔍 [TIMING] Starting ES query execution at {start_time}")
-    logger.info(f"📋 [REQUEST-{request_id}] Executing query for user: {user_info.get('username') if user_info else 'anonymous'}")
-    logger.info(f"🔑 Auth header present: {(auth_header)}")
+    logger.info(f"🔑 Auth header present: {auth_header}")
     logger.info(f"Executing standard ES query on index '{index}': {query_body}")
 
-    # You can now use auth_header, user_info, or request_id for:
-    # - Adding user-specific filters to the query
-    # - Logging user actions
-    # - Implementing user-based access controls
-    # - Making authenticated requests to other services
-
-    # Example: Add user-based filtering (if needed)
-    if user_info and 'user_id' in user_info:
-        # You could modify the query to filter by user if needed
-        logger.info(f"Query executed by user_id: {user_info['user_id']}")
-
-    # Remove any size parameters and force to 25
 
     logger.info(f"Executing query on index: {index} body: {query_body}")
 
