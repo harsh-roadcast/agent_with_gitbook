@@ -17,7 +17,7 @@ class ThinkingSignature(dspy.Signature):
         desc="Complete list of previous conversation messages with roles and content. REQUIRED for understanding references like 'that data', 'previous chart', follow-up questions, and conversation flow patterns")
 
     detailed_analysis: str = dspy.OutputField(
-        desc="Concise analysis (6-8 lines max) of user intent including: what they're asking for, references to previous data/results, follow-up question indicators, analysis type needed, and key concepts involved")
+        desc="Concise analysis (2-3 lines max) of user intent including: what they're asking for, references to previous data/results, follow-up question indicators, analysis type needed, and key concepts involved")
     intent: str = dspy.OutputField(
         desc="Primary purpose behind the user's query in simple terms (e.g., 'data analysis', 'chart creation', 'follow-up visualization', 'information retrieval', 'comparison analysis')")
     context_summary: str = dspy.OutputField(
@@ -56,7 +56,7 @@ class QueryWorkflowPlanner(dspy.Signature):
     workflow_plan: List[str] = dspy.OutputField(
         desc="Ordered execution sequence using: 'EsQueryProcessor' (structured data queries), 'VectorQueryProcessor' (semantic document search for information retrieval), 'SummarySignature' (ALWAYS required for text analysis), 'ChartGenerator' (for visualizations). CRITICAL: Always include data processor when ChartGenerator needed, user references previous data, OR for information retrieval requests (legal, procedural, guidelines, how-to)")
     reasoning: str = dspy.OutputField(
-        desc="Concise reason tracing (2-3 lines max) explaining workflow decisions including: why specific data processors were chosen, how user intent and context influenced data source selection, and rationale for including/excluding ChartGenerator or SummarySignature. Should clarify how the plan addresses user needs and maintains conversation continuity")
+        desc="Concise reason tracing (1-2 lines max) explaining workflow decisions including: why specific data processors were chosen, how user intent and context influenced data source selection, and rationale for including/excluding ChartGenerator or SummarySignature. Should clarify how the plan addresses user needs and maintains conversation continuity")
     primary_data_source: Literal['elasticsearch', 'vector', 'none'] = dspy.OutputField(
         desc="Selected data source: 'elasticsearch' for structured analytics/reports when schema matches or previous ES usage detected, 'vector' for information retrieval (legal, procedural, guidelines, how-to) or as fallback, 'none' ONLY for pure conversational queries not requiring any information retrieval")
     is_within_context: bool = dspy.OutputField(
