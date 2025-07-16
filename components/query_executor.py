@@ -27,29 +27,33 @@ class DSPyQueryExecutor(IQueryExecutor):
     @monitor_performance("query_execution")
     def execute_query(self, database_type: DatabaseType, user_query: str, schema: List[Dict[str, Any]] | None,
                       instructions: str | None, conversation_history: Optional[List[Dict]] = None,
-                      detailed_analysis: Optional[str] = None, vector_db_index: str = None) -> QueryResult:
+                      detailed_analysis: Optional[str] = None, vector_db_index: str = None,
+                      context_summary: Optional[str] = None) -> QueryResult:
         """
         Execute query on the specified database.
 
         Args:
-            database_type: Type of database to query
-            user_query: The user's query string
-            schema: Database schema information
-            instructions: Query execution instructions
-            conversation_history: Optional conversation history for context
-            detailed_analysis: Optional detailed analysis from ThinkingSignature
+            :param context_summary:
+            :param database_type:
+            :param user_query:
+            :param schema:
+            :param conversation_history:
+            :param instructions:
+            :param detailed_analysis:
+            :param vector_db_index:
 
         Returns:
             QueryResult with parsed data and metadata
 
         Raises:
             QueryExecutionError: If query execution fails
+
         """
         try:
             if database_type == DatabaseType.VECTOR:
-                return self._execute_vector_query(user_query, conversation_history, detailed_analysis, vector_db_index)
+                return self._execute_vector_query(user_query, conversation_history, detailed_analysis, vector_db_index, context_summary)
             elif database_type == DatabaseType.ELASTIC:
-                return self._execute_elastic_query(user_query, schema, instructions, conversation_history, detailed_analysis)
+                return self._execute_elastic_query(user_query, schema, instructions, conversation_history, detailed_analysis, context_summary)
             else:
                 raise QueryExecutionError(f"Unsupported database type: {database_type}")
 
@@ -57,15 +61,17 @@ class DSPyQueryExecutor(IQueryExecutor):
             logger.error(f"Error executing query on {database_type}: {e}", exc_info=True)
             raise QueryExecutionError(f"Failed to execute query: {e}") from e
 
-    def _execute_vector_query(self, user_query: str, conversation_history: Optional[List[Dict]] = None, detailed_analysis: Optional[str] = None, vector_db_index: str = None) -> QueryResult:
+    def _execute_vector_query(self, user_query: str, conversation_history: Optional[List[Dict]] = None,
+                             detailed_analysis: Optional[str] = None, vector_db_index: str = None,
+                             context_summary: Optional[str] = None) -> QueryResult:
         """Execute vector search query."""
         logger.info(f"Processing Vector query for: {user_query}")
 
         # Use the VectorQueryProcessor to generate proper search string
         result = self.vector_agent(
             user_query=user_query,
-            detailed_user_query=detailed_analysis,  # Use actual detailed_analysis from ThinkingSignature
-            conversation_history=conversation_history
+            detailed_analysis=detailed_analysis or "No detailed analysis provided",  # Fixed parameter name
+            context_summary=context_summary or "No context summary available"  # Added missing required parameter
         )
         print(f"🤖 Generated vector query result: {result}")
         # Extract the generated vector query string and pass to execute_vector_query
@@ -109,7 +115,7 @@ class DSPyQueryExecutor(IQueryExecutor):
 
         return self._parse_query_result(result, DatabaseType.VECTOR)
 
-    def _execute_elastic_query(self, user_query: str, schema: List[Dict[str, Any]], instructions: str, conversation_history: Optional[List[Dict]] = None, detailed_analysis: Optional[str] = None) -> QueryResult:
+    def _execute_elastic_query(self, user_query: str, schema: List[Dict[str, Any]], instructions: str, conversation_history: Optional[List[Dict]] = None, detailed_analysis: Optional[str] = None, context_summary: Optional[str] = None) -> QueryResult:
         """Execute Elasticsearch query."""
         start_time = time.time()
         logger.info(f"🚀 [TIMING] Starting DSPy ES agent processing at {start_time}")
@@ -120,9 +126,9 @@ class DSPyQueryExecutor(IQueryExecutor):
         result = self.es_agent(
             user_query=user_query,
             detailed_analysis=detailed_analysis or user_query,  # Use actual detailed_analysis or fallback to user_query
+            context_summary=context_summary or "No context summary available",  # Added missing required parameter
             es_schema=schema,
-            es_instructions=instructions,
-            conversation_history=conversation_history
+            es_instructions=instructions
         )
         agent_end = time.time()
         logger.info(f"🤖 [TIMING] DSPy ES agent completed in {(agent_end - agent_start) * 1000:.2f}ms")

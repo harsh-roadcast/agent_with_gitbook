@@ -248,6 +248,7 @@ class QueryAgent(IQueryAgent):
                         instructions=self.config.es_instructions,
                         conversation_history=request.conversation_history,
                         detailed_analysis=thinking_result.detailed_analysis,
+                        context_summary=thinking_result.context_summary,  # Added missing parameter
                         vector_db_index=request.vector_db_index,
                     )
                     yield "data", query_result.data
@@ -262,6 +263,7 @@ class QueryAgent(IQueryAgent):
                         instructions=None,
                         conversation_history=request.conversation_history,
                         detailed_analysis=thinking_result.detailed_analysis,
+                        context_summary=thinking_result.context_summary,  # Added missing parameter
                         vector_db_index=request.vector_db_index,
                     )
                     yield "data", query_result.data
