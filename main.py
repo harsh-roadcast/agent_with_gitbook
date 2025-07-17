@@ -26,22 +26,10 @@ from middleware.auth_context import AuthContextMiddleware
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    logger.info("DSPy Agent API starting up")
-    generate_startup_token()  # Generate and print token on startup
-
-    initialize_index_schema()
-    yield
-    # Shutdown
-    logger.info("DSPy Agent API shutting down")
-
 # Initialize the FastAPI application
 app = FastAPI(
     title="DSPy Agent API",
     description="FastAPI application with DSPy for natural language processing and JWT authentication",
-    lifespan=lifespan
 )
 
 # Set up static files directory

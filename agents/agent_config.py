@@ -316,7 +316,7 @@ def initialize_default_agents():
     AGENTS.add_agent(police_assistant_agent)
 
     # Initialize default agents
-    initialize_default_agents()
+initialize_default_agents()
 
 
 def get_agent_config(agent_name: str) -> AgentConfig:
