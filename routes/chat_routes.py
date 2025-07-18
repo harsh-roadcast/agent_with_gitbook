@@ -24,7 +24,7 @@ conversation_service = ConversationService()
 
 
 class StreamResponseHandler:
-    """Handles SSE streaming responses with timing and formatting."""
+    """Handles SSE streaming responses with consistent format for frontend."""
 
     def __init__(self, session_id: str, user_id: str, model: str):
         self.session_id = session_id
@@ -42,112 +42,46 @@ class StreamResponseHandler:
         else:
             logger.info(f"🚀 [TIMING] {event} at {elapsed:.2f}ms from start")
 
-    def should_skip_field(self, field: str) -> bool:
-        """Check if field should be skipped from frontend."""
-        skip_fields = []  # Can add fields to skip here if needed
-        return field in skip_fields
-
-    def is_priority_field(self, field: str) -> bool:
-        """Check if field should be sent immediately (ES data)."""
-        return field in ["data", "data_markdown"]
-
-    def is_error_field(self, field: str, value: Any) -> bool:
-        """Check if this is a critical error that should stop processing."""
-        if field != "error":
-            return False
-
-        error_msg = str(value).lower()
-        critical_errors = [
-            "cannot proceed",
-            "elasticsearch query returned 0 results",
-            "vector search returned 0 results",
-            "invalid or missing elasticsearch query",
-            "invalid or missing vector search query",
-            "failed to generate embedding"
-        ]
-        return any(phrase in error_msg for phrase in critical_errors)
-
-    def format_content(self, field: str, value: Any) -> str:
-        """Format field content for frontend display."""
-        if field == "data":
-            return None  # Skip raw data, only send markdown
-        elif field == "data_markdown":
-            return f"{value}\n\n"
-        elif field == "elastic_query":
-            return f"**Elasticsearch Query:**\n{value}\n\n\n"
-        elif field == "summary":
-            return f"**Summary:**\n{value}\n\n\n"
-        elif field == "chart_config":
-            return f"{json.dumps(value)}\n\n"
-        elif field == "error":
-            return f"**Error:**\n{value}\n\n\n"
-        elif field == "database":
-            return f"**Database Selected:**\n{value}\n\n\n"
-        elif field == "completed":
-            return None  # Skip completed status
-        else:
-            return f"**{field.capitalize()}:**\n{str(value)}\n\n\n"
-
-    def create_sse_response(self, content: str, field: str, finish_reason: Optional[str] = None) -> str:
-        """Create SSE response chunk."""
+    def create_sse_response(self, content: Any, finish_reason: Optional[str] = None) -> str:
+        """Create SSE response chunk in simple, flat format for frontend."""
         response = {
-            "id": f"chatcmpl-{self.session_id}-{time.time()}",
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": self.model,
-            "choices": [{
-                "index": 0,
-                "delta": {
-                    "content": content,
-                    "field": field,
-                },
-                "finish_reason": finish_reason
-            }],
-            "user_id": self.user_id
+            "id": f"chunk-{time.time()}",
+            "message": content,
+            "render_type": content.get("render_type", 'text'),
+            "timestamp": time.time(),
+            "finish_reason": finish_reason
         }
-        return f"event: delta\ndata: {json.dumps(response)}\n\n"
+        return f"{json.dumps(response)}\n\n"
 
     def create_final_response(self) -> str:
         """Create final [DONE] response."""
-        response = {
-            "id": f"chatcmpl-{self.session_id}-{time.time()}",
-            "object": "chat.completion.chunk",
-            "created": int(time.time()),
-            "model": self.model,
-            "choices": [{
-                "index": 0,
-                "delta": {"content": ""},
-                "finish_reason": "stop"
-            }],
-            "user_id": self.user_id
-        }
-        return f"data: {json.dumps(response)}\n\ndata: [DONE]\n\n"
+        # Simple format for the final response to match other messages
+        return "[DONE]\n\n"
 
 
 async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any], model="LLM_TEXT_SQL", message_id: Optional[str] = None):
-    """Generate streaming response with user context - simplified and focused."""
+    """Generate streaming response with user context - simplified for standardized query_agent format."""
 
     # Initialize handler and validate inputs
     handler = StreamResponseHandler(session_id, user_info.get('user_id', 'anonymous_user'), model)
     handler.log_timing("Starting stream generation")
 
     if not message_id:
-        yield "data: [DONE]\n\n"
+        yield "[DONE]\n\n"
         return
 
     # Setup conversation context
     conversation_service.add_user_message(session_id, query, message_id)
     conversation_history = conversation_service.get_conversation_history(session_id)
 
-    # Get agent configuration based on model name - return error if not found
+    # Get agent configuration based on model name
     try:
         agent_config = get_agent_config(model)
     except ValueError as e:
         logger.error(f"Agent not found for model '{model}': {e}")
-        # Return error immediately - no fallback
-        error_msg = f"Agent '{model}' not found. Available agents: {', '.join(['bolt_data_analyst', 'synco_agent', 'police_assistant'])}"
-        async for error_chunk in handle_critical_error(handler, "error", error_msg, session_id, message_id):
-            yield error_chunk
+        error_msg = f"Agent '{model}' not found. Available agents: bolt_data_analyst, synco_agent, police_assistant"
+        yield handler.create_sse_response("error", error_msg, finish_reason="stop")
+        yield "data: [DONE]\n\n"
         return
 
     # Create QueryRequest with agent configuration
@@ -156,69 +90,48 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
         system_prompt=agent_config.system_prompt,
         conversation_history=conversation_history,
         es_schemas=agent_config.es_schemas or [],
-        vector_db_index=agent_config.vector_db or "docling_documents"
+        vector_db_index=agent_config.vector_db or "docling_documents",
+        query_instructions=agent_config.query_instructions,
+        goal=agent_config.goal,
+        success_criteria=agent_config.success_criteria,
     )
 
-    # Process query asynchronously - Initialize query agent (no parameters needed)
+    # Process query asynchronously
     query_agent = QueryAgent()
-    assistant_response_stored = False
-
     handler.log_timing("Starting async processing")
 
-    async for field, value in query_agent.process_query_async(
-        request=query_request,
-        session_id=session_id,
-        message_id=message_id
-    ):
-        handler.log_timing("Received field", field)
-        handler.response_data[field] = value
+    # For storing the full response to save at the end
+    full_response = {}
 
-        # Skip fields that shouldn't be sent to frontend
-        if handler.should_skip_field(field):
-            continue
+    try:
+        async for msg_type, msg_data in query_agent.process_query_async(
+            request=query_request,
+            session_id=session_id,
+            message_id=message_id
+        ):
+            if msg_type != "message":
+                # Skip non-message yields (e.g. query_result, which is for internal use)
+                continue
 
-        # Handle critical errors immediately
-        if handler.is_error_field(field, value):
-            async for error_chunk in handle_critical_error(handler, field, value, session_id, message_id):
-                yield error_chunk
-            return
+            # Store all non-debug messages in full_response
+            message_type = msg_data.get("type")
+            message_content = msg_data.get("content")
+            if message_type and message_content and message_type != "debug":
+                full_response[message_type] = message_content
 
-        # Format and send field to frontend
-        content = handler.format_content(field, value)
-        if content is not None:
-            sse_response = handler.create_sse_response(content, field)
-            yield sse_response
+            yield handler.create_sse_response(msg_data)
 
-            # Add timing logs for important fields
-            if handler.is_priority_field(field):
-                handler.log_timing(f"ES data sent for {field}")
-            elif field == "summary":
-                handler.log_timing("Summary sent")
-
-            # Small delay for SSE processing
-            sleep_time = 0.5 if handler.is_priority_field(field) else 0.1
-            await asyncio.sleep(sleep_time)
-
-    # Store complete response and send final chunk
-    if not assistant_response_stored:
-        conversation_service.add_assistant_response(session_id, handler.response_data, message_id)
+        # Save full response
+        conversation_service.add_assistant_response(session_id, full_response, message_id)
         logger.info(f"Stored complete assistant response for session {session_id}")
 
+    except Exception as e:
+        logger.error(f"Error during stream generation: {str(e)}")
+        yield handler.create_sse_response("error", f"An error occurred: {str(e)}", finish_reason="error")
+
+    # Always send final response
     handler.log_timing("Stream completed")
     yield handler.create_final_response()
-
-
-async def handle_critical_error(handler: StreamResponseHandler, field: str, value: Any, session_id: str, message_id: str):
-    """Handle critical errors that should stop processing."""
-    # Store error response
-    conversation_service.add_assistant_response(session_id, handler.response_data, message_id)
-    logger.info(f"Stored assistant response with error for session {session_id}")
-
-    # Send error to frontend
-    content = handler.format_content(field, value)
-    error_response = handler.create_sse_response(content, field, finish_reason="stop")
-    yield error_response
-    yield "data: [DONE]\n\n"
 
 
 @router.post("/v1/chat/completions")
@@ -249,15 +162,14 @@ async def handle_non_streaming_request(user_message: str, session_id: str, user_
     conversation_service.add_user_message(session_id, user_message, message_id)
     conversation_history = conversation_service.get_conversation_history(session_id)
 
-    # Get agent configuration based on model name - return error if not found
+    # Get agent configuration based on model name
     try:
         agent_config = get_agent_config(model)
     except ValueError as e:
         logger.error(f"Agent not found for model '{model}': {e}")
-        # Return error immediately - no fallback
         error_response = {
             "error": {
-                "message": f"Agent '{model}' not found. Available agents: {', '.join(['bolt_data_analyst', 'synco_agent', 'police_assistant'])}",
+                "message": f"Agent '{model}' not found. Available agents: bolt_data_analyst, synco_agent, police_assistant",
                 "type": "invalid_request_error",
                 "code": "agent_not_found"
             }
@@ -270,23 +182,49 @@ async def handle_non_streaming_request(user_message: str, session_id: str, user_
         system_prompt=agent_config.system_prompt,
         conversation_history=conversation_history,
         es_schemas=agent_config.es_schemas or [],
-        vector_db_index=agent_config.vector_db or "docling_documents"
+        vector_db_index=agent_config.vector_db or "docling_documents",
+        query_instructions=agent_config.query_instructions,
+        goal=agent_config.goal,
+        success_criteria=agent_config.success_criteria,
     )
 
-    # Initialize query agent (no parameters needed)
+    # Initialize query agent
     query_agent = QueryAgent()
     result_dict = {}
 
-    async for field, value in query_agent.process_query_async(
-        request=query_request,
-        session_id=session_id,
-        message_id=message_id
-    ):
-        if field not in ["database", "chart_html"]:
-            result_dict[field] = value
+    try:
+        # Process all messages from query agent
+        async for msg_type, msg_data in query_agent.process_query_async(
+            request=query_request,
+            session_id=session_id,
+            message_id=message_id
+        ):
+            if msg_type != "message":
+                # Skip non-message yields
+                continue
 
-    conversation_service.add_assistant_response(session_id, result_dict, message_id)
+            message_type = msg_data.get("type")
+            message_content = msg_data.get("content")
 
+            # Store all non-debug messages in result dictionary
+            if message_type and message_content:
+                # Use the message type as the key
+                result_dict[message_type] = message_content
+
+        # Save the complete response
+        conversation_service.add_assistant_response(session_id, result_dict, message_id)
+
+    except Exception as e:
+        logger.error(f"Error during non-streaming request: {str(e)}")
+        error_response = {
+            "error": {
+                "message": f"Error processing request: {str(e)}",
+                "type": "processing_error"
+            }
+        }
+        return JSONResponse(content=error_response, status_code=500)
+
+    # Return OpenAI-like response format
     response = {
         "id": f"chatcmpl-{session_id}-{time.time()}",
         "object": "chat.completion",

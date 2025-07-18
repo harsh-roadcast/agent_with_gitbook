@@ -39,7 +39,7 @@ if not static_dir.exists():
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # Initialize DSPy with local LLM
-llm = init_llm(model_name="ollama_chat/qwen3:8b")
+llm = init_llm()
 
 # Add authorization context middleware (must be added before other middleware)
 app.add_middleware(AuthContextMiddleware)

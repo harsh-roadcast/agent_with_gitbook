@@ -20,6 +20,10 @@ class QueryRequest(BaseModel):
         default="docling_documents",
         description="Vector database index name to use for vector queries"
     )
+    query_instructions: List[str] = Field(..., description="Instructions for processing the query")
+    goal: str = Field(..., description="High-level goal or objective of the query processing")
+    success_criteria: str = Field(..., description="Criteria for determining if the query processing was successful")
+
 
     @classmethod
     def create_with_config(cls, user_query: str, system_prompt: str,

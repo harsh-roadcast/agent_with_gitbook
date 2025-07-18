@@ -12,13 +12,5 @@ class Settings:
     def OPENAI_API_KEY(self):
         return settings.models.openai_api_key
 
-    @property
-    def ES_SCHEMA(self):
-        return settings.es_schema
-
-    @property
-    def ES_INSTRUCTIONS(self):
-        return settings.es_instructions
-
 # Create instance for backward compatibility
 settings_legacy = Settings()

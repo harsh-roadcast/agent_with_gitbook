@@ -140,12 +140,6 @@ class DSPyQueryExecutor(IQueryExecutor):
             elastic_query = result.elastic_query
             index_name = result.elastic_index  # Changed from index_name to elastic_index
 
-            # Debug logging to check what we actually got
-            logger.info(f"🔍 DEBUG: result object has attributes: {dir(result)}")
-            logger.info(f"🔍 DEBUG: elastic_query = {elastic_query}")
-            logger.info(f"🔍 DEBUG: elastic_index = {getattr(result, 'elastic_index', 'MISSING')}")
-            logger.info(f"🔍 DEBUG: index_name variable = {index_name}")
-
             # Add fallback if index_name is None or empty
             if not index_name or index_name in [None, '', 'None']:
                 logger.warning(f"⚠️  Index name is missing or empty: '{index_name}', using fallback")

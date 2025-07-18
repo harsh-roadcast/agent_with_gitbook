@@ -71,7 +71,7 @@ class ConfigManager:
         """Ensure DSPy LM is initialized."""
         if not self._llm_initialized:
             from services.llm_service import init_llm
-            init_llm("gpt-4o-mini")
+            init_llm()
             self._llm_initialized = True
             logger.info("DSPy LM initialized successfully")
 

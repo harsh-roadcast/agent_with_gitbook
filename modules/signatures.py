@@ -14,14 +14,15 @@ class ThinkingSignature(dspy.Signature):
     user_query: str = dspy.InputField(
         desc="The user's current question or request that needs to be analyzed and understood in context")
     conversation_history: List[Dict] = dspy.InputField(
-        desc="Complete list of previous conversation messages with roles and content. REQUIRED for understanding references like 'that data', 'previous chart', follow-up questions, and conversation flow patterns")
+        desc="Complete list of previous conversation messages with only user messages and timestamps, use it to understand the context, references, and follow-up questions.")
+    goal: str = dspy.InputField(
+        desc="High-level goal or objective of the user query, derived from the detailed analysis. Should summarize what the user is trying to achieve with their question in 1-2 lines")
+    success_criteria: str = dspy.InputField(
+        desc="Criteria for determining if the analysis successfully captured user intent and context. Should define what constitutes a successful understanding of the user's query and how it aligns with the system prompt and agent's capabilities")
 
-    detailed_analysis: str = dspy.OutputField(
-        desc="Concise analysis (2-3 lines max) of user intent including: what they're asking for, references to previous data/results, follow-up question indicators, analysis type needed, and key concepts involved")
-    intent: str = dspy.OutputField(
-        desc="Primary purpose behind the user's query in simple terms (e.g., 'data analysis', 'chart creation', 'follow-up visualization', 'information retrieval', 'comparison analysis')")
-    context_summary: str = dspy.OutputField(
-        desc="Brief summary (6-8 lines max) of relevant conversation context: previous data sources (ES/Vector), query types executed, data retrieved, visualizations created, and ongoing analytical themes affecting current request")
+    detailed_user_query: str = dspy.OutputField(
+        desc="Deep understanding of the user's query, including intent, context, and any references to previous messages or data. Should capture the underlying purpose of the question and how it relates to the conversation history.")
+
     is_within_context: bool = dspy.OutputField(
         desc="Boolean indicating whether the user query is within the scope and context of the system prompt. True if the query relates to the agent's defined responsibilities and capabilities, False if the query is outside the agent's domain or asking for unrelated functionality")
 
@@ -32,8 +33,8 @@ class QueryWorkflowPlanner(dspy.Signature):
     , whether es_schema and vector_index are available or not needs to be considered.
 
     Decision Logic:
-    1. Check context_summary for previous ES/Vector queries → maintain consistency
-    2. Analyze detailed_analysis for analytics/reports/analysis questions → prefer ES if schema allows and es_schema_available
+    1. Check detailed_user_query for previous ES/Vector queries → maintain consistency
+    2. Analyze detailed_user_query for analytics/reports/analysis questions → prefer ES if schema allows and es_schema_available
     3. Check for information retrieval requests (legal, procedural, guidelines, how-to) → use Vector search if vector_index_available
     4. Check es_schema relevance for new structured data queries → use ES if relevant
     5. If no relevant data sources available, return is_within_context as False and system will return error
@@ -44,23 +45,17 @@ class QueryWorkflowPlanner(dspy.Signature):
     Always include SummarySignature. Include ChartGenerator based on user intent.
     """
     system_prompt: str = dspy.InputField(desc="System prompt to guide workflow planning decisions based on user query and context, also defines the responsibilities of the workflow planner")
-    user_query: str = dspy.InputField(desc="The original user question that needs workflow planning")
-    detailed_analysis: str = dspy.InputField(
+
+    detailed_user_query: str = dspy.InputField(
         desc="Detailed analysis from ThinkingSignature containing user intent, context understanding, and indicators of analytics/reports questions, information retrieval requests, or references to previous data/charts")
-    context_summary: str = dspy.InputField(
-        desc="Conversation context including previous query patterns (ES/Vector usage), data sources accessed, results obtained, and ongoing analytical themes influencing data source selection")
     es_schema: List[Dict[str, Any]] = dspy.InputField(
         desc="Complete Elasticsearch schema definition showing available indices, field mappings, and data types. Analyze to determine if relevant structured data exists for the user's analytical needs")
     es_schema_available: bool = dspy.InputField(desc="Boolean indicating whether the Elasticsearch schema is available for querying. True if schema exists, False if not")
     vector_index_available: bool = dspy.InputField(desc="Boolean indicating whether the vector index is available for querying")
+
     workflow_plan: List[str] = dspy.OutputField(
         desc="Ordered execution sequence using: 'EsQueryProcessor' (structured data queries), 'VectorQueryProcessor' (semantic document search for information retrieval), 'SummarySignature' (ALWAYS required for text analysis), 'ChartGenerator' (for visualizations). CRITICAL: Always include data processor when ChartGenerator needed, user references previous data, OR for information retrieval requests (legal, procedural, guidelines, how-to)")
-    reasoning: str = dspy.OutputField(
-        desc="Concise reason tracing (1-2 lines max) explaining workflow decisions including: why specific data processors were chosen, how user intent and context influenced data source selection, and rationale for including/excluding ChartGenerator or SummarySignature. Should clarify how the plan addresses user needs and maintains conversation continuity")
-    primary_data_source: Literal['elasticsearch', 'vector', 'none'] = dspy.OutputField(
-        desc="Selected data source: 'elasticsearch' for structured analytics/reports when schema matches or previous ES usage detected, 'vector' for information retrieval (legal, procedural, guidelines, how-to) or as fallback, 'none' ONLY for pure conversational queries not requiring any information retrieval")
-    is_within_context: bool = dspy.OutputField(
-        desc="Boolean indicating whether the user query and planned workflow are within the scope and context of the system prompt. True if the workflow aligns with the agent's defined responsibilities and capabilities, False if the query or required workflow is outside the agent's domain")
+    is_within_context: bool = dspy.OutputField(desc="Boolean indicating whether the user query is within the scope and context of the system prompt. True if the query relates to the agent's defined responsibilities and capabilities, False if the query is outside the agent's domain or asking for unrelated functionality")
 
 
 class EsQueryProcessor(dspy.Signature):
@@ -68,15 +63,14 @@ class EsQueryProcessor(dspy.Signature):
     Elasticsearch query processor that returns top 25 results with relevant business data fields only.
     Automatically excludes ES metadata fields (_id, _index, _score, _type, etc.) and selects only meaningful business columns and all the user requested columns.
     """
-    user_query: str = dspy.InputField(desc="The user's question that will be translated into an Elasticsearch query")
-    detailed_analysis: str = dspy.InputField(
+
+    detailed_user_query: str = dspy.InputField(
         desc="User intent analysis from ThinkingSignature providing context about what data aspects are needed and how the query should be structured")
-    context_summary: str = dspy.InputField(
-        desc="Conversation context including previous ES queries, data patterns accessed, and analytical themes to maintain consistency in data retrieval approach")
+
     es_schema: List[Dict[str, Any]] = dspy.InputField(
         desc="Elasticsearch schema with indices, fields, and data types available for querying. Use to select "
              "appropriate index and optimize field selection, appropriate size limit, and query structure size limit can't be more than 100")
-    es_instructions = dspy.InputField(
+    es_instructions: List[str] = dspy.InputField(
         desc="Elasticsearch-specific query guidelines, best practices, and formatting requirements for generating valid queries")
 
     elastic_query: dict = dspy.OutputField(
@@ -90,19 +84,12 @@ class VectorQueryProcessor(dspy.Signature):
     Simple vector search processor. Return a string which can then be converted to embedding to perform vector search.
     Depends on ThinkingSignature to generate the query string and user query and context.
     """
-    user_query: str = dspy.InputField(
-        desc="The user's question that needs to be transformed into an effective vector search query")
-    detailed_analysis: str = dspy.InputField(
-        desc="User intent and context analysis from ThinkingSignature to understand what concepts and information patterns to search for in vector space")
-    context_summary: str = dspy.InputField(
-        desc="Conversation context including previous vector searches, document types accessed, and search patterns to maintain consistency and improve search relevance")
 
-    reasoning: str = dspy.OutputField(
-        desc="Explanation of: search strategy chosen, key concepts extracted for vector matching, how context influences search terms, and expected document types or content patterns to find")
+    detailed_user_query: str = dspy.InputField(
+        desc="User intent and context analysis from ThinkingSignature to understand what concepts and information patterns to search for in vector space")
+
     vector_query: str = dspy.OutputField(
         desc="Optimized search string designed for vector embedding conversion. Should capture user intent, key concepts, and context in natural language that will effectively match relevant documents in vector space")
-    data_json: str = dspy.OutputField(
-        desc="Raw JSON string containing vector search results with document content, metadata, and relevance scores, formatted for downstream summary and analysis processing")
 
 
 class SummarySignature(dspy.Signature):
@@ -113,18 +100,15 @@ class SummarySignature(dspy.Signature):
     Do not generate any code snippets, file references, JSON data, technical formatting, or image descriptions.
     Do not generate any summary if json_results is empty or invalid.
     """
-    user_query: str = dspy.InputField(
-        desc="The original user question that needs to be answered through data analysis and summarization")
-    detailed_analysis: str = dspy.InputField(
-        desc="User intent and context analysis from ThinkingSignature providing understanding of what insights, patterns, or specific information the user is seeking")
-    context_summary: str = dspy.InputField(
-        desc="Conversation context including previous queries, data accessed, and analytical themes to ensure summary builds appropriately on prior discussion and maintains consistency")
+
+    detailed_user_query: str = dspy.InputField(
+        desc="User intent and context analysis from ThinkingSignature to understand what concepts and information patterns to search for in vector space")
+
+
     json_results: str = dspy.InputField(
         desc="Raw JSON data from Elasticsearch or Vector search containing the actual information to analyze, synthesize, and present. May include structured data, documents, or search results with metadata",
         default="")
 
-    reasoning: str = dspy.OutputField(
-        desc="Analysis process explanation covering: data interpretation approach, key insights identified, how results address user query, integration with conversation context, and summary construction logic")
     summary: str = dspy.OutputField(
         desc="Comprehensive, detailed summary that directly answers the user's question using search results. Can be as long as needed to fully address the query. MUST be purely textual with natural language explanations, insights, and findings. NO code snippets, file references, JSON data, technical formatting, or image descriptions. Focus on data insights, trends, patterns, and actionable information in readable prose")
 
@@ -132,28 +116,20 @@ class SummarySignature(dspy.Signature):
 class ChartGenerator(dspy.Signature):
     """
     Generates complete Highcharts configuration from data and user query.
+    DO not generate any code snippets, file references, or image descriptions.
+    Do not use javascript function or methods in the chart configuration.
+    Do not generate any dummy data or placeholder values.
+    Generates a fully specified Highcharts configuration object that can be directly used in a web application.
     """
-    user_query: str = dspy.InputField(
-        desc="The user's question or request that involves data visualization, including any specific chart type preferences or visualization requirements")
-    detailed_analysis: str = dspy.InputField(
-        desc="User intent analysis from ThinkingSignature indicating visualization needs, chart type preferences, and how the chart should support the analytical goals")
-    context_summary: str = dspy.InputField(
-        desc="Conversation context including previous visualizations created, chart types used, and ongoing analytical themes to maintain consistency in visualization approach")
-    json_results: str = dspy.InputField(
-        desc="Raw JSON data from query processors containing the actual dataset to visualize. Should include numerical data, categories, and metadata needed for chart construction")
+    detailed_user_query: str = dspy.InputField(
+        desc="User intent and context analysis from ThinkingSignature to understand what concepts and information patterns to search for in vector space")
 
-    needs_chart: bool = dspy.OutputField(
-        desc="Determination of whether the user's request actually requires a visual chart based on query intent, data availability, and visualization value for answering their question")
-    chart_type: str = dspy.OutputField(
-        desc="Optimal chart type selection from available options (line, column, bar, pie, scatter) based on data characteristics, user intent, and analytical purpose")
-    x_axis_column: str = dspy.OutputField(
-        desc="Field name from the data to use for x-axis values, typically categorical data, time series, or independent variables that provide meaningful grouping")
-    y_axis_column: str = dspy.OutputField(
-        desc="Field name from the data to use for y-axis values, typically numerical measurements, counts, or dependent variables that show the primary metric of interest")
-    chart_title: str = dspy.OutputField(
-        desc="Descriptive, user-friendly title for the chart that clearly communicates what the visualization shows and its relevance to the user's question")
-    reasoning: str = dspy.OutputField(
-        desc="Justification for chart design decisions including: why this chart type is optimal, how axis selections support analysis goals, title choice rationale, and how the visualization addresses user needs")
+    json_results: str = dspy.InputField(
+        desc="Raw JSON data from Elasticsearch or Vector search containing the actual information to analyze, synthesize, and present. May include structured data, documents, or search results with metadata",
+        default="")
+
+    chart_config: Dict[str, Any] = dspy.OutputField(desc="Complete Highcharts configuration object that defines the chart type, data series, axes, labels, tooltips, and any additional features needed to visualize the results effectively. Should be fully specified with all required properties for rendering in a web application")
+
 
 
 class DocumentMetadataExtractor(dspy.Signature):

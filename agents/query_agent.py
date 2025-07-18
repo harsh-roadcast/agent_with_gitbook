@@ -1,311 +1,530 @@
-"""Simple query agent that executes workflow plan dynamically."""
+"""Redesigned query agent with structured JSON output and improved workflow."""
 import json
 import logging
+from typing import Dict, Any, List, Optional, Tuple
+import time
 
 import dspy
 
-from components.query_executor import DSPyQueryExecutor
-from components.result_processor import ResultProcessor
-from core.exceptions import DSPyAgentException
-from core.interfaces import IQueryAgent, ProcessedResult, QueryResult, DatabaseType
+from core.interfaces import ProcessedResult, QueryResult, DatabaseType
 from modules.query_models import QueryRequest
-from modules.signatures import ThinkingSignature, QueryWorkflowPlanner, SummarySignature, ChartGenerator
-from util.chart_utils import generate_chart_from_config
-from util.performance import monitor_performance
+from modules.signatures import ThinkingSignature, QueryWorkflowPlanner, EsQueryProcessor, VectorQueryProcessor, SummarySignature, ChartGenerator
+from services.search_service import execute_query, execute_vector_query, convert_vector_results_to_markdown
+from services.llm_service import set_mlflow_trace_name
 
 logger = logging.getLogger(__name__)
 
-class QueryAgent(IQueryAgent):
-    """Simple query agent that uses existing components."""
+class QueryAgent(dspy.Module):
+    """Redesigned query agent with structured workflow and JSON output."""
 
     def __init__(self):
-        """Initialize QueryAgent with existing components."""
-        # Use existing components instead of duplicating functionality
+        """Initialize QueryAgent with DSPy components."""
+        super().__init__()
+
+        # Initialize all DSPy signatures
         self.thinking = dspy.ChainOfThought(ThinkingSignature)
         self.workflow_planner = dspy.Predict(QueryWorkflowPlanner)
-        self.query_executor = DSPyQueryExecutor()
-        self.result_processor = ResultProcessor()
-
-        # For summary and chart generation, we'll use the DSPy signatures directly
+        self.es_query_processor = dspy.Predict(EsQueryProcessor)
+        self.vector_query_processor = dspy.Predict(VectorQueryProcessor)
         self.summary_processor = dspy.ChainOfThought(SummarySignature)
         self.chart_processor = dspy.Predict(ChartGenerator)
 
-        # Config
-        from core.config import config_manager
-        self.config = config_manager.config
+        # Storage for outputs from executed signatures
+        self.signature_outputs = {}
+        self.temperature = 0.0
+        self.frequency_penalty = 0.0
+
+        logger.info("QueryAgent initialized with redesigned workflow")
 
     def _parse_history(self, conversation_history):
-        """Parse conversation history and return only last 3 messages."""
+        """Parse conversation history and return only last 5 user messages."""
         if not conversation_history:
-            return None
+            return []
+
         try:
             if isinstance(conversation_history, str):
                 parsed = json.loads(conversation_history)
             else:
                 parsed = conversation_history
 
-            # Return only the last 3 messages to limit context size
-            if isinstance(parsed, list) and len(parsed) > 3:
-                return parsed[-3:]
-            return parsed
-        except:
+            if not isinstance(parsed, list):
+                logger.warning("Conversation history is not a list, returning empty history")
+                return []
+
+            # Filter to get only user messages and return last 5
+            user_messages = [msg for msg in parsed if isinstance(msg, dict) and msg.get('role') == 'user']
+            return user_messages[-5:] if len(user_messages) > 5 else user_messages
+
+        except (json.JSONDecodeError, TypeError, AttributeError) as e:
+            logger.error(f"Failed to parse conversation history: {e}")
+            return []
+
+    def _convert_to_json_serializable(self, obj: Any) -> Any:
+        """Convert any object to JSON serializable format."""
+        if obj is None:
             return None
+        elif hasattr(obj, 'to_dict'):
+            return obj.to_dict()
+        elif isinstance(obj, dict):
+            return {k: self._convert_to_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_to_json_serializable(item) for item in obj]
+        elif hasattr(obj, 'isoformat'):  # datetime objects
+            return obj.isoformat()
+        elif hasattr(obj, '__dict__'):
+            return {k: self._convert_to_json_serializable(v) for k, v in obj.__dict__.items()}
+        else:
+            try:
+                json.dumps(obj)  # Test if it's JSON serializable
+                return obj
+            except (TypeError, ValueError):
+                return str(obj)
 
-    @monitor_performance("query_processing")
-    def process_query(self, request: QueryRequest) -> ProcessedResult:
-        """Process query using existing components."""
+    def _create_message(self, message_type, content, render_type="text"):
+        """Helper method to create standardized message objects."""
+        return "message", {
+            "type": message_type,
+            "content": self._convert_to_json_serializable(content),
+            "render_type": render_type,
+            "timestamp": time.time()
+        }
+
+    def _create_debug_message(self, debug_type, content):
+        """Helper method to create debug messages."""
+        return self._create_message("debug", {"type": debug_type, **content}, "debug")
+
+    def _create_error_message(self, error_message, error_type="error"):
+        """Helper method to create error messages."""
+        return self._create_message("error", error_message, "error")
+
+    def _prepare_json_data(self, query_result):
+        """Convert query results to JSON string."""
+        if query_result is None or not query_result.result:
+            return "[]"
+        return json.dumps(query_result.result)
+
+    async def _execute_es_query_processor(self, request: QueryRequest, detailed_query: str):
+        """Execute Elasticsearch query processor step with retry logic for failed queries."""
+        max_retries = 2
+
+        for attempt in range(max_retries + 1):
+            try:
+                # Generate ES query with temperature and frequency penalty that increase with each retry
+                es_query_result = self.es_query_processor(
+                    detailed_user_query=detailed_query,
+                    es_schema=request.es_schemas,
+                    es_instructions=request.query_instructions,
+                    config={
+                        "temperature": self.temperature + attempt * 0.2,
+                        "frequency_penalty": self.frequency_penalty + attempt * 0.2,
+                    }
+                )
+
+                logger.info(f"ES query generation result on attempt {attempt + 1}: {es_query_result}")
+
+                elastic_query = es_query_result.elastic_query
+                elastic_index = es_query_result.elastic_index
+                self.signature_outputs['EsQueryProcessor'] = {'elastic_query': elastic_query, 'elastic_index': elastic_index}
+
+                try:
+                    # Execute query
+                    query_result = execute_query(query_body=elastic_query, index=elastic_index)
+                    rows_count = len(query_result.result) if query_result.result else 0
+                    logger.info(f"ES query executed successfully, returned {rows_count} results")
+
+                    debug_info = {
+                        "elastic_query": elastic_query,
+                        "elastic_index": elastic_index,
+                        "rows_count": rows_count,
+                        "attempts": attempt + 1,
+                        "status": "success_no_data" if rows_count == 0 else "success"
+                    }
+
+                    if not query_result.result:
+                        # No results found
+                        # Not sending raw JSON results to frontend
+                        yield self._create_message("markdown_table", "No data found.", "markdown")
+                        yield "debug", {**debug_info, "timestamp": time.time()}
+                        yield self._create_debug_message("es_execution", debug_info)
+                    else:
+                        # Results found - yield them
+                        markdown_table = getattr(query_result, 'markdown_content',
+                                              "Results found but no formatted display available.")
+                        # Not sending raw JSON results to frontend
+                        yield self._create_message("markdown_table", markdown_table, "markdown")
+                        yield self._create_debug_message("es_execution", debug_info)
+
+                    yield "query_result", query_result
+                    return  # Success - exit retry loop
+
+                except Exception as es_exec_error:
+                    logger.error(f"ES execution exception: {es_exec_error}")
+
+                    # If this was the last attempt, report the error
+                    if attempt == max_retries:
+                        error_message = f"Elasticsearch query failed after {max_retries + 1} attempts: {str(es_exec_error)}"
+                        yield self._create_error_message(error_message)
+                        yield self._create_debug_message("es_execution", {
+                            "elastic_query": elastic_query,
+                            "elastic_index": elastic_index,
+                            "error": str(es_exec_error),
+                            "attempts": attempt + 1,
+                            "status": "error"
+                        })
+                        return
+
+                    # Continue to next retry attempt
+                    logger.info(f"Retrying ES query generation (attempt {attempt + 2}/{max_retries + 1})")
+                    continue
+
+            except Exception as es_gen_error:
+                logger.error(f"ES query generation failed on attempt {attempt + 1}: {es_gen_error}")
+
+                # If this was the last attempt, report the error
+                if attempt == max_retries:
+                    yield self._create_debug_message("es_generation_error", {
+                        "error": str(es_gen_error),
+                        "attempts": attempt + 1
+                    })
+                    return
+
+                # Continue to next retry attempt
+                logger.info(f"Retrying ES query generation (attempt {attempt + 2}/{max_retries + 1})")
+                continue
+
+    async def _execute_vector_query_processor(self, request: QueryRequest, detailed_query: str):
+        """Execute Vector query processor step."""
         try:
+            # Generate vector query
+            vector_query_result = self.vector_query_processor(
+                detailed_user_query=detailed_query,
+                config={"temperature": self.temperature, "frequency_penalty": self.frequency_penalty}
+            )
+
+            logger.info(f"Vector query generation result: {vector_query_result}")
+            vector_query = vector_query_result.vector_query
+            self.signature_outputs['VectorQueryProcessor'] = {'vector_query': vector_query}
+
+            try:
+                # Execute vector query
+                vector_query_dict = {
+                    "query_text": vector_query,
+                    "index": request.vector_db_index,
+                    "size": 100
+                }
+                query_result = execute_vector_query(vector_query_dict)
+                rows_count = len(query_result.result) if query_result.result else 0
+                logger.info(f"Vector query executed successfully, returned {rows_count} results")
+
+                # Generate markdown and yield results
+                title = f"Vector Search Results for '{vector_query[:30]}...'" if len(vector_query) > 30 else f"Vector Search Results for '{vector_query}'"
+                markdown_content = convert_vector_results_to_markdown(results=query_result.result, title=title)
+
+                # Not sending raw JSON results to frontend
+                yield self._create_message("markdown", markdown_content, "markdown")
+
+                # Debug information
+                yield self._create_debug_message("vector_execution", {
+                    "vector_query": vector_query,
+                    "vector_index": request.vector_db_index,
+                    "rows_count": rows_count,
+                    "status": "success"
+                })
+
+                yield "query_result", query_result
+
+            except Exception as vector_exec_error:
+                logger.error(f"Vector execution exception: {vector_exec_error}")
+                yield self._create_error_message(f"Vector search failed: {str(vector_exec_error)}")
+                yield self._create_debug_message("vector_execution", {
+                    "vector_query": vector_query,
+                    "vector_index": request.vector_db_index,
+                    "error": str(vector_exec_error),
+                    "status": "error"
+                })
+
+        except Exception as vector_gen_error:
+            logger.error(f"Vector query generation failed: {vector_gen_error}")
+            yield self._create_debug_message("vector_generation_error", {
+                "error": str(vector_gen_error)
+            })
+
+    async def _execute_summary_signature(self, request: QueryRequest, detailed_query: str, query_result):
+        """Execute summary signature step."""
+        try:
+            # Convert query results to JSON string
+            json_data = self._prepare_json_data(query_result)
+
+            if query_result is None or not query_result.result:
+                logger.info("No data available for summary generation")
+            else:
+                logger.info(f"Generating summary from {len(query_result.result)} results")
+
+            # Generate summary
+            summary_result = self.summary_processor(
+                detailed_user_query=detailed_query,
+                json_results=json_data,
+                config={"temperature": self.temperature, "frequency_penalty": self.frequency_penalty}
+            )
+
+            # Store summary in signature outputs
+            self.signature_outputs['SummarySignature'] = {'summary': summary_result.summary}
+
+            # Yield summary with standardized format
+            yield self._create_message("summary", summary_result.summary, "markdown")
+
+        except Exception as summary_error:
+            logger.error(f"Summary generation failed: {summary_error}")
+            yield self._create_debug_message("summary_error", {"error": str(summary_error)})
+
+    async def _execute_chart_generator(self, request: QueryRequest, detailed_query: str, query_result):
+        """Execute chart generator step."""
+        try:
+            # Convert query results to JSON string
+            json_data = self._prepare_json_data(query_result)
+
+            # Generate chart configuration
+            chart_result = self.chart_processor(
+                detailed_user_query=detailed_query,
+                json_results=json_data,
+                config={"temperature": self.temperature, "frequency_penalty": self.frequency_penalty}
+            )
+
+            # Check if chart configuration was generated
+            if hasattr(chart_result, 'chart_config') and chart_result.chart_config:
+                # Store chart configuration in signature outputs
+                self.signature_outputs['ChartGenerator'] = {'chart_config': chart_result.chart_config}
+
+                # Yield chart with standardized format
+                yield self._create_message("highchart_config", chart_result.chart_config, "chart")
+            else:
+                logger.warning("Chart generator did not return a chart configuration")
+
+        except Exception as chart_error:
+            logger.error(f"Chart generation failed: {chart_error}")
+            yield self._create_debug_message("chart_error", {"error": str(chart_error)})
+
+    async def process_query_async(self, request: QueryRequest, session_id=None, message_id=None, test_mode=False):
+        """Process query using the redesigned workflow with structured JSON output."""
+        try:
+            # Set MLflow trace name using session_id and message_id if available
+            if session_id and message_id:
+                set_mlflow_trace_name(session_id, message_id)
+
+            # Validate required inputs
+            if not request.user_query or not request.user_query.strip():
+                yield "message", {
+                    "type": "debug",
+                    "content": {
+                        "type": "process_error",
+                        "error": "Empty user query provided"
+                    },
+                    "render_type": "debug",
+                    "timestamp": time.time()
+                }
+                return
+
+            self.temperature = getattr(request, 'temperature', 0.0)
+            self.frequency_penalty = getattr(request, 'frequency_penalty', 0.0)
             parsed_history = self._parse_history(request.conversation_history)
+            self.signature_outputs = {}  # Reset storage
 
-            # Step 1: Think
-            thinking_result = self.thinking(
-                system_prompt=request.system_prompt,
-                user_query=request.user_query,
-                conversation_history=parsed_history
-            )
+            # Step 1: ThinkingSignature
+            yield "message", {
+                "type": "debug",
+                "content": {
+                    "type": "debug_step",
+                    "step": "thinking"
+                },
+                "render_type": "debug",
+                "timestamp": time.time()
+            }
 
-            # Check if query is within context - stop execution if not
-            if not thinking_result.is_within_context:
-                logger.info(f"Query out of context at thinking stage, stopping execution: {request.user_query}")
-                return ProcessedResult(
-                    query_result=self._empty_query_result(),
-                    summary=f"I'm sorry, but your query is outside my area of expertise. {thinking_result.detailed_analysis}",
-                    chart_config=None,
-                    chart_html=None
+            try:
+                thinking_result = self.thinking(
+                    system_prompt=request.system_prompt,
+                    user_query=request.user_query,
+                    conversation_history=parsed_history,
+                    goal=request.goal,
+                    success_criteria=request.success_criteria,
+                    config=dict(temperature=self.temperature, frequency_penalty=self.frequency_penalty)
                 )
 
-            # Step 2: Plan Workflow
-            es_schema = request.es_schemas
-            workflow_plan = self.workflow_planner(
-                system_prompt=request.system_prompt,
-                user_query=request.user_query,
-                es_schema_available=request.es_schemas is not None,
-                vector_index_available= request.vector_db_index is not None,
-                detailed_analysis=thinking_result.detailed_analysis,
-                context_summary=thinking_result.context_summary,
-                es_schema=es_schema
-            )
+                detailed_query = thinking_result.detailed_user_query
+                is_within_context = thinking_result.is_within_context
 
-            # Check if workflow is within context - stop execution if not
-            if not workflow_plan.is_within_context:
-                logger.info(f"Workflow out of context at planning stage, stopping execution: {request.user_query}")
-                return ProcessedResult(
-                    query_result=self._empty_query_result(),
-                    summary=f"I'm sorry, but the required workflow for your query is outside my capabilities. {workflow_plan.reasoning}",
-                    chart_config=None,
-                    chart_html=None
+                self.signature_outputs['ThinkingSignature'] = {
+                    'detailed_user_query': detailed_query,
+                    'is_within_context': is_within_context
+                }
+
+                # Yield detailed_user_query as frontend content
+                yield "message", {
+                    "type": "detailed_user_query",
+                    "content": detailed_query,
+                    "render_type": "text",
+                    "timestamp": time.time()
+                }
+
+                # If query is out of context, yield message and stop processing
+                if not is_within_context:
+                    yield "message", {
+                        "type": "out_of_scope_message",
+                        "content": f"I'm sorry, but your query is outside my area of expertise. {detailed_query}",
+                        "render_type": "text",
+                        "timestamp": time.time()
+                    }
+                    return
+
+            except Exception as e:
+                logger.error(f"ThinkingSignature failed: {e}")
+
+                yield "debug_info", self._convert_to_json_serializable({
+                    "type": "process_error",
+                    "error": f"Failed to analyze user query: {str(e)}"
+                })
+                return
+
+            # Step 2: QueryWorkflowPlanner
+            yield "message", {
+                "type": "debug",
+                "content": {
+                    "type": "debug_step",
+                    "step": "workflow_planning"
+                },
+                "render_type": "debug",
+                "timestamp": time.time()
+            }
+
+            try:
+                workflow_result = self.workflow_planner(
+                    system_prompt=request.system_prompt,
+                    detailed_user_query=detailed_query,
+                    es_schema_available=request.es_schemas is not None,
+                    vector_index_available=request.vector_db_index is not None,
+                    es_schema=request.es_schemas,
+                    config=dict(temperature=self.temperature, frequency_penalty=self.frequency_penalty)
                 )
 
-            # Step 3: Execute workflow plan
-            return self._execute_workflow_plan(
-                workflow_plan.workflow_plan,
-                request,
-                thinking_result.detailed_analysis,
-                thinking_result.context_summary
-            )
+                workflow_steps = workflow_result.workflow_plan
+                is_within_context = workflow_result.is_within_context
+
+                self.signature_outputs['QueryWorkflowPlanner'] = {
+                    'workflow_steps': workflow_steps,
+                    'is_within_context': is_within_context
+                }
+
+                yield "message", {
+                    "type": "debug",
+                    "content": {
+                        "type": "workflow_plan",
+                        "workflow_steps": workflow_steps
+                    },
+                    "render_type": "debug",
+                    "timestamp": time.time()
+                }
+
+                # If workflow is out of context, yield message and stop processing
+                if not is_within_context:
+                    yield "message", {
+                        "type": "out_of_scope_message",
+                        "content": "I'm sorry, but the required workflow for your query is outside my capabilities.",
+                        "render_type": "text",
+                        "timestamp": time.time()
+                    }
+                    return
+
+            except Exception as e:
+                logger.error(f"QueryWorkflowPlanner failed: {e}")
+                # Use default workflow as fallback
+                workflow_steps = ["EsQueryProcessor", "SummarySignature"]
+                logger.info("Using default workflow as fallback")
+
+            # Override workflow for test mode
+            if test_mode:
+                if request.es_schemas:
+                    workflow_steps = ["EsQueryProcessor"]
+                elif request.vector_db_index:
+                    workflow_steps = ["VectorQueryProcessor"]
+                logger.info(f"Running in test mode: workflow overridden to only use {workflow_steps[0]}")
+
+            # Step 3: Execute workflow steps dynamically
+            query_result = None
+            has_data = False
+
+            for step in workflow_steps:
+                yield "message", {
+                    "type": "debug",
+                    "content": {
+                        "type": "debug_step",
+                        "step": f"executing_{step.lower()}"
+                    },
+                    "render_type": "debug",
+                    "timestamp": time.time()
+                }
+
+                if step == "EsQueryProcessor":
+                    async for result in self._execute_es_query_processor(request, detailed_query):
+                        if result[0] == "query_result":
+                            query_result = result[1]
+                            has_data = query_result is not None and hasattr(query_result, 'result') and len(query_result.result) > 0
+                        else:
+                            yield result
+
+                elif step == "VectorQueryProcessor":
+                    async for result in self._execute_vector_query_processor(request, detailed_query):
+                        if result[0] == "query_result":
+                            query_result = result[1]
+                            has_data = query_result is not None and hasattr(query_result, 'result') and len(query_result.result) > 0
+                        else:
+                            yield result
+
+                elif step == "SummarySignature":
+                    if has_data:
+                        async for result in self._execute_summary_signature(request, detailed_query, query_result):
+                            yield result
+                    else:
+                        logger.info("Skipping summary generation because query returned no data")
+                        yield "message", {
+                            "type": "debug",
+                            "content": {
+                                "type": "summary_skipped",
+                                "reason": "no_data"
+                            },
+                            "render_type": "debug",
+                            "timestamp": time.time()
+                        }
+
+                elif step == "ChartGenerator":
+                    if has_data:
+                        async for result in self._execute_chart_generator(request, detailed_query, query_result):
+                            yield result
+                    else:
+                        logger.info("Skipping chart generation because query returned no data")
+                        yield "message", {
+                            "type": "debug",
+                            "content": {
+                                "type": "chart_skipped",
+                                "reason": "no_data"
+                            },
+                            "render_type": "debug",
+                            "timestamp": time.time()
+                        }
+
+            yield "message", {
+                "type": "debug",
+                "content": {
+                    "type": "process_completed",
+                    "reason": "success"
+                },
+                "render_type": "debug",
+                "timestamp": time.time()
+            }
 
         except Exception as e:
             logger.error(f"Query processing failed: {e}")
-            raise DSPyAgentException(f"Query processing failed: {e}")
 
-    def _execute_workflow_plan(self, plan: list, request: QueryRequest, detailed_analysis: str, context_summary: str) -> ProcessedResult:
-        """Execute workflow plan using existing components."""
-        query_result = None
-        summary = None
-        chart_config = None
-        chart_html = None
-
-        for signature_name in plan:
-            logger.info(f"Executing signature: {signature_name}")
-
-            if signature_name == 'EsQueryProcessor':
-                es_schema = request.es_schemas
-                query_result = self.query_executor.execute_query(
-                    database_type=DatabaseType.ELASTIC,
-                    user_query=request.user_query,
-                    schema=es_schema,
-                    instructions=self.config.es_instructions,
-                    conversation_history=request.conversation_history,
-                    detailed_analysis=detailed_analysis,
-                    vector_db_index=request.vector_db_index,
-                )
-
-            elif signature_name == 'VectorQueryProcessor':
-                query_result = self.query_executor.execute_query(
-                    database_type=DatabaseType.VECTOR,
-                    user_query=request.user_query,
-                    vector_index=request.vector_index,
-                    schema=None,
-                    instructions=None,
-                    conversation_history=request.conversation_history,
-                    detailed_analysis=detailed_analysis,
-                    vector_db_index=request.vector_db_index,
-                )
-
-            elif signature_name == 'SummarySignature':
-                if query_result:
-                    json_data = json.dumps(query_result.data) if query_result.data else "[]"
-                    summary_result = self.summary_processor(
-                        user_query=request.user_query,
-                        detailed_analysis=detailed_analysis,
-                        context_summary=context_summary,
-                        json_results=json_data
-                    )
-                    summary = summary_result.summary
-
-            elif signature_name == 'ChartGenerator':
-                if query_result and query_result.data:
-                    json_data = json.dumps(query_result.data)
-                    chart_result = self.chart_processor(
-                        user_query=request.user_query,
-                        detailed_analysis=detailed_analysis,
-                        context_summary=context_summary,
-                        json_results=json_data
-                    )
-
-                    if chart_result.needs_chart:
-                        from components.chart_generator import generate_highchart_config
-                        chart_config = generate_highchart_config(
-                            chart_type=chart_result.chart_type,
-                            x_axis_column=chart_result.x_axis_column,
-                            y_axis_column=chart_result.y_axis_column,
-                            x_axis_label=chart_result.x_axis_column.title(),
-                            y_axis_label=chart_result.y_axis_column.title(),
-                            chart_title=chart_result.chart_title,
-                            json_data=json_data
-                        )
-                        chart_html = generate_chart_from_config(chart_config)
-
-        return ProcessedResult(
-            query_result=query_result or self._empty_query_result(),
-            summary=summary or "No summary generated",
-            chart_config=chart_config,
-            chart_html=chart_html
-        )
-
-    def _empty_query_result(self) -> QueryResult:
-        """Return empty query result."""
-        return QueryResult(
-            database_type=DatabaseType.ELASTIC,
-            data=[],
-            raw_result={}
-        )
-
-    async def process_query_async(self, request: QueryRequest, session_id=None, message_id=None):
-        """Async version using existing components."""
-        try:
-            parsed_history = self._parse_history(request.conversation_history)
-
-            # Step 1: Think
-            yield "current_step", "thinking"
-            thinking_result = self.thinking(
-                system_prompt=request.system_prompt,
-                user_query=request.user_query,
-                conversation_history=parsed_history
-            )
-            yield "thinking_analysis", thinking_result.detailed_analysis
-
-            # Check if query is within context at thinking stage - stop execution if not
-            if not thinking_result.is_within_context:
-                logger.info(f"Query out of context at thinking stage, stopping async execution: {request.user_query}")
-                yield "summary", f"I'm sorry, but your query is outside my area of expertise. {thinking_result.detailed_analysis}"
-                yield "completed", True
-                return
-
-            # Step 2: Plan Workflow
-            yield "current_step", "planning"
-            es_schema = request.es_schemas
-            workflow_plan = self.workflow_planner(
-                system_prompt=request.system_prompt,
-                user_query=request.user_query,
-                es_schema_available=request.es_schemas is not None,
-                vector_index_available=request.vector_db_index is not None,
-                detailed_analysis=thinking_result.detailed_analysis,
-                context_summary=thinking_result.context_summary,
-                es_schema=es_schema
-            )
-            yield "workflow_plan", workflow_plan.workflow_plan
-            yield "workflow_reasoning", workflow_plan.reasoning
-
-            # Check if workflow is within context at planning stage - stop execution if not
-            if not workflow_plan.is_within_context:
-                logger.info(f"Workflow out of context at planning stage, stopping async execution: {request.user_query}")
-                yield "summary", f"I'm sorry, but the required workflow for your query is outside my capabilities. {workflow_plan.reasoning}"
-                yield "completed", True
-                return
-
-            # Step 3: Execute workflow plan
-            query_result = None
-
-            for signature_name in workflow_plan.workflow_plan:
-                yield "current_step", f"executing_{signature_name.lower()}"
-
-                if signature_name == 'EsQueryProcessor':
-                    query_result = self.query_executor.execute_query(
-                        database_type=DatabaseType.ELASTIC,
-                        user_query=request.user_query,
-                        schema=es_schema,
-                        instructions=self.config.es_instructions,
-                        conversation_history=request.conversation_history,
-                        detailed_analysis=thinking_result.detailed_analysis,
-                        context_summary=thinking_result.context_summary,  # Added missing parameter
-                        vector_db_index=request.vector_db_index,
-                    )
-                    yield "data", query_result.data
-                    if hasattr(query_result, 'markdown_content'):
-                        yield "markdown_results", query_result.markdown_content
-
-                elif signature_name == 'VectorQueryProcessor':
-                    query_result = self.query_executor.execute_query(
-                        database_type=DatabaseType.VECTOR,
-                        user_query=request.user_query,
-                        schema=None,
-                        instructions=None,
-                        conversation_history=request.conversation_history,
-                        detailed_analysis=thinking_result.detailed_analysis,
-                        context_summary=thinking_result.context_summary,  # Added missing parameter
-                        vector_db_index=request.vector_db_index,
-                    )
-                    yield "data", query_result.data
-
-                elif signature_name == 'SummarySignature':
-                    if query_result:
-                        json_data = json.dumps(query_result.data) if query_result.data else "[]"
-                        summary_result = self.summary_processor(
-                            user_query=request.user_query,
-                            detailed_analysis=thinking_result.detailed_analysis,
-                            context_summary=thinking_result.context_summary,
-                            json_results=json_data
-                        )
-                        yield "summary", summary_result.summary
-
-                elif signature_name == 'ChartGenerator':
-                    if query_result and query_result.data:
-                        json_data = json.dumps(query_result.data)
-                        chart_result = self.chart_processor(
-                            user_query=request.user_query,
-                            detailed_analysis=thinking_result.detailed_analysis,
-                            context_summary=thinking_result.context_summary,
-                            json_results=json_data
-                        )
-
-                        if chart_result.needs_chart:
-                            from components.chart_generator import generate_highchart_config
-                            chart_config = generate_highchart_config(
-                                chart_type=chart_result.chart_type,
-                                x_axis_column=chart_result.x_axis_column,
-                                y_axis_column=chart_result.y_axis_column,
-                                x_axis_label=chart_result.x_axis_column.title(),
-                                y_axis_label=chart_result.y_axis_column.title(),
-                                chart_title=chart_result.chart_title,
-                                json_data=json_data
-                            )
-                            chart_html = generate_chart_from_config(chart_config)
-                            yield "chart_config", chart_config
-                            yield "chart_html", chart_html
-
-            yield "completed", True
-
-        except Exception as e:
-            logger.error(f"Async query processing failed: {e}")
-            yield "error", str(e)
+            yield "debug_info", self._convert_to_json_serializable({
+                "type": "process_error",
+                "error": str(e)
+            })

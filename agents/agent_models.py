@@ -16,6 +16,13 @@ class AgentConfig(BaseModel):
         default=None,
         description="Vector database index name the agent can use for vector searches"
     )
+    query_instructions: List[str] = Field(..., description="List of instructions for the agent to follow when processing queries")
+    success_criteria: Optional[str] = Field(..., description="Criteria for determining if the agent's response is successful")
+    goal: Optional[str] = Field(
+        default=None,
+        description="High-level goal or objective of the agent"
+    )
+
 
     class Config:
         """Pydantic configuration."""
