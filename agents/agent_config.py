@@ -20,265 +20,266 @@ def initialize_default_agents():
         ),
         es_schemas=[
             {
-                "stop_idle_report_mappings": {
-                    "mappings": {
-                        "properties": {
-                            "id": {"type": "long"},
-                            "server_id": {"type": "integer"},
-                            "device_id": {"type": "long"},
-                            "device_name": {
-                                "type": "text",
-                                "fields": {
-                                    "keyword": {"type": "keyword", "ignore_above": 256}
-                                }
-                            },
-
-                            "type": {"type": "keyword"},
-                            "engine_seconds": {"type": "long"},
-
-                            "start_time": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
-                            },
-                            "end_time": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
-                            },
-
-                            "lat": {"type": "float"},
-                            "lng": {"type": "float"},
-
-                            "stop_idle_date": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd"
-                            },
-
-                            "duration_seconds": {"type": "long"},
-                            "position_id": {"type": "long"},
-
-                            "timestamp_column1": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
-                            },
-                            "timestamp_column2": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
-                            },
-                            "timestamp": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
-                            },
-                            "timestamp_date": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd"
-                            },
-                            "timestamp_time": {
-                                "type": "keyword",
-                                "ignore_above": 64
-                            },
-                            "timestamp_epoch": {
-                                "type": "long"
-                            },
-                            "indexed_at": {
-                                "type": "date",
-                                "format": "strict_date_optional_time||epoch_millis"
+                "index": "stop_idle_report",
+                "mappings": {
+                    "properties": {
+                        "id": {"type": "long"},
+                        "server_id": {"type": "integer"},
+                        "device_id": {"type": "long"},
+                        "device_name": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {"type": "keyword", "ignore_above": 256}
                             }
+                        },
+
+                        "type": {"type": "keyword"},
+                        "engine_seconds": {"type": "long"},
+
+                        "start_time": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
+                        },
+                        "end_time": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
+                        },
+
+                        "lat": {"type": "float"},
+                        "lng": {"type": "float"},
+
+                        "stop_idle_date": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd"
+                        },
+
+                        "duration_seconds": {"type": "long"},
+                        "position_id": {"type": "long"},
+
+                        "timestamp_column1": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
+                        },
+                        "timestamp_column2": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
+                        },
+                        "timestamp": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
+                        },
+                        "timestamp_date": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd"
+                        },
+                        "timestamp_time": {
+                            "type": "keyword",
+                            "ignore_above": 64
+                        },
+                        "timestamp_epoch": {
+                            "type": "long"
+                        },
+                        "indexed_at": {
+                            "type": "date",
+                            "format": "strict_date_optional_time||epoch_millis"
                         }
                     }
-                },
+                }
+            },
 
-                "trip_report_mappings": {
-                    "mappings": {
-                        "properties": {
-                            "id": {"type": "long"},
-                            "server_id": {"type": "integer"},
-                            "device_id": {"type": "long"},
-                            "device_name": {
-                                "type": "text",
-                                "fields": {
-                                    "keyword": {"type": "keyword", "ignore_above": 256}
-                                }
-                            },
+            {
+                "index": "stop_idle_report",
+                "mappings": {
+                 "properties": {
+                     "id": {"type": "long"},
+                     "server_id": {"type": "integer"},
+                     "device_id": {"type": "long"},
+                     "device_name": {
+                         "type": "text",
+                         "fields": {
+                             "keyword": {"type": "keyword", "ignore_above": 256}
+                         }
+                     },
 
-                            "distance": {"type": "float"},
-                            "avg_speed": {"type": "float"},
-                            "max_speed": {"type": "float"},
-                            "max_speed_time": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
-                            },
+                     "distance": {"type": "float"},
+                     "avg_speed": {"type": "float"},
+                     "max_speed": {"type": "float"},
+                     "max_speed_time": {
+                         "type": "date",
+                         "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
+                     },
 
-                            "start_position_id": {"type": "long"},
-                            "end_position_id": {"type": "long"},
-                            "duration": {"type": "long"},
+                     "start_position_id": {"type": "long"},
+                     "end_position_id": {"type": "long"},
+                     "duration": {"type": "long"},
 
-                            "start_time": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
-                            },
-                            "end_time": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
-                            },
+                     "start_time": {
+                         "type": "date",
+                         "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
+                     },
+                     "end_time": {
+                         "type": "date",
+                         "format": "yyyy-MM-dd HH:mm:ss.SSS Z||yyyy-MM-dd HH:mm:ss.SSS||strict_date_optional_time||epoch_millis"
+                     },
 
-                            "start_lat": {"type": "float"},
-                            "start_lng": {"type": "float"},
-                            "end_lat": {"type": "float"},
-                            "end_lng": {"type": "float"},
+                     "start_lat": {"type": "float"},
+                     "start_lng": {"type": "float"},
+                     "end_lat": {"type": "float"},
+                     "end_lng": {"type": "float"},
 
-                            "trip_date": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd"
-                            },
+                     "trip_date": {
+                         "type": "date",
+                         "format": "yyyy-MM-dd"
+                     },
 
-                            "harsh_braking": {"type": "integer"},
-                            "harsh_acceleration": {"type": "integer"},
-                            "harsh_cornering": {"type": "integer"},
-                            "utilization": {"type": "float"},
-                            "over_speed": {"type": "integer"},
-                            "night_driving": {"type": "integer"},
-                            "crash": {"type": "integer"},
-                            "ignition_records": {"type": "integer"},
-                            "motion_records": {"type": "integer"},
-                            "excessive_idle_seconds": {"type": "long"},
-                            "excessive_over_speed_seconds": {"type": "long"},
-                            "driving_safety_score": {"type": "float"},
-                            "over_motion": {"type": "integer"},
-                            "over_ignition": {"type": "integer"},
-                            "start_battery_level": {"type": "float"},
-                            "end_battery_level": {"type": "float"},
-                            "start_battery": {"type": "integer"},
-                            "end_battery": {"type": "integer"},
-                            "power_start": {"type": "float"},
-                            "power_end": {"type": "float"},
-                            "power_difference": {"type": "float"},
-                            "start_odometer": {"type": "double"},
-                            "end_odometer": {"type": "double"},
-                            "start_voltage": {"type": "float"},
-                            "end_voltage": {"type": "float"},
-                            "start_soc": {"type": "float"},
-                            "end_soc": {"type": "float"},
-                            "motion_seconds": {"type": "long"},
-                            "idle_seconds": {"type": "long"},
-                            "over_speed_seconds": {"type": "long"},
-                            "penalty_list": {
-                                "type": "nested",
-                                "properties": {
-                                    "type": {"type": "keyword"},
-                                    "count": {"type": "integer"},
-                                    "weight": {"type": "integer"},
-                                    "penalty": {"type": "float"}
-                                }
-                            },
-                            "harsh_acceleration_penalty": {"type": "float"},
-                            "harsh_braking_penalty": {"type": "float"},
-                            "harsh_turn_penalty": {"type": "float"},
-                            "over_speed_penalty": {"type": "float"},
-                            "more_events_penalty": {"type": "float"},
-                            "final_penalty": {"type": "float"},
-                            "penalty_per_km": {"type": "float"},
-                            "driving_score": {"type": "float"},
+                     "harsh_braking": {"type": "integer"},
+                     "harsh_acceleration": {"type": "integer"},
+                     "harsh_cornering": {"type": "integer"},
+                     "utilization": {"type": "float"},
+                     "over_speed": {"type": "integer"},
+                     "night_driving": {"type": "integer"},
+                     "crash": {"type": "integer"},
+                     "ignition_records": {"type": "integer"},
+                     "motion_records": {"type": "integer"},
+                     "excessive_idle_seconds": {"type": "long"},
+                     "excessive_over_speed_seconds": {"type": "long"},
+                     "driving_safety_score": {"type": "float"},
+                     "over_motion": {"type": "integer"},
+                     "over_ignition": {"type": "integer"},
+                     "start_battery_level": {"type": "float"},
+                     "end_battery_level": {"type": "float"},
+                     "start_battery": {"type": "integer"},
+                     "end_battery": {"type": "integer"},
+                     "power_start": {"type": "float"},
+                     "power_end": {"type": "float"},
+                     "power_difference": {"type": "float"},
+                     "start_odometer": {"type": "double"},
+                     "end_odometer": {"type": "double"},
+                     "start_voltage": {"type": "float"},
+                     "end_voltage": {"type": "float"},
+                     "start_soc": {"type": "float"},
+                     "end_soc": {"type": "float"},
+                     "motion_seconds": {"type": "long"},
+                     "idle_seconds": {"type": "long"},
+                     "over_speed_seconds": {"type": "long"},
+                     "penalty_list": {
+                         "type": "nested",
+                         "properties": {
+                             "type": {"type": "keyword"},
+                             "count": {"type": "integer"},
+                             "weight": {"type": "integer"},
+                             "penalty": {"type": "float"}
+                         }
+                     },
+                     "harsh_acceleration_penalty": {"type": "float"},
+                     "harsh_braking_penalty": {"type": "float"},
+                     "harsh_turn_penalty": {"type": "float"},
+                     "over_speed_penalty": {"type": "float"},
+                     "more_events_penalty": {"type": "float"},
+                     "final_penalty": {"type": "float"},
+                     "penalty_per_km": {"type": "float"},
+                     "driving_score": {"type": "float"},
 
-                            "timestamp": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
-                            },
-                            "timestamp_date": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd"
-                            },
-                            "timestamp_time": {
-                                "type": "keyword",
-                                "ignore_above": 64
-                            },
-                            "timestamp_epoch": {
-                                "type": "long"
-                            },
-                            "indexed_at": {
-                                "type": "date",
-                                "format": "strict_date_optional_time||epoch_millis"
+                     "timestamp": {
+                         "type": "date",
+                         "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
+                     },
+                     "timestamp_date": {
+                         "type": "date",
+                         "format": "yyyy-MM-dd"
+                     },
+                     "timestamp_time": {
+                         "type": "keyword",
+                         "ignore_above": 64
+                     },
+                     "timestamp_epoch": {
+                         "type": "long"
+                     },
+                     "indexed_at": {
+                         "type": "date",
+                         "format": "strict_date_optional_time||epoch_millis"
+                     }
+                 }
+             }
+             },
+            {
+                "index": "summary_reports_mappings",
+                "mappings": {
+                    "properties": {
+                        "id": {"type": "long"},
+                        "server_id": {"type": "integer"},
+                        "device_id": {"type": "long"},
+                        "device_name": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {"type": "keyword", "ignore_above": 256}
                             }
+                        },
+
+                        "distance": {"type": "float"},
+                        "avg_speed": {"type": "float"},
+                        "max_speed": {"type": "float"},
+                        "max_speed_time": {
+                            "type": "date",
+                            "format": "strict_date_optional_time||epoch_millis"
+                        },
+
+                        "geo_in_count": {"type": "integer"},
+                        "geo_out_count": {"type": "integer"},
+                        "start_position_id": {"type": "long"},
+                        "end_position_id": {"type": "long"},
+                        "start_lat": {"type": "float"},
+                        "start_lng": {"type": "float"},
+                        "end_lat": {"type": "float"},
+                        "end_lng": {"type": "float"},
+
+                        "ign_on_count": {"type": "integer"},
+                        "ign_off_count": {"type": "integer"},
+                        "engine_seconds": {"type": "long"},
+
+                        "summary_date": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd"
+                        },
+                        "stop_seconds": {"type": "long"},
+                        "idle_seconds": {"type": "long"},
+                        "motion_seconds": {"type": "long"},
+
+                        "driving_score": {"type": "integer"},
+                        "harsh_braking": {"type": "integer"},
+                        "harsh_acceleration": {"type": "integer"},
+                        "harsh_cornering": {"type": "integer"},
+                        "over_speed": {"type": "integer"},
+                        "over_speed_seconds": {"type": "long"},
+                        "crash": {"type": "integer"},
+
+                        "utilization": {"type": "float"},
+                        "night_driving": {"type": "integer"},
+                        "fuel_consumption": {"type": "float"},
+
+                        "timestamp": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
+                        },
+                        "timestamp_date": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd"
+                        },
+                        "timestamp_time": {
+                            "type": "keyword",
+                            "ignore_above": 64
+                        },
+                        "timestamp_epoch": {
+                            "type": "long"
+                        },
+                        "indexed_at": {
+                            "type": "date",
+                            "format": "strict_date_optional_time||epoch_millis"
                         }
                     }
-                },
+                }
+            },
 
-                "summary_reports_mappings": {
-                    "mappings": {
-                        "properties": {
-                            "id": {"type": "long"},
-                            "server_id": {"type": "integer"},
-                            "device_id": {"type": "long"},
-                            "device_name": {
-                                "type": "text",
-                                "fields": {
-                                    "keyword": {"type": "keyword", "ignore_above": 256}
-                                }
-                            },
-
-                            "distance": {"type": "float"},
-                            "avg_speed": {"type": "float"},
-                            "max_speed": {"type": "float"},
-                            "max_speed_time": {
-                                "type": "date",
-                                "format": "strict_date_optional_time||epoch_millis"
-                            },
-
-                            "geo_in_count": {"type": "integer"},
-                            "geo_out_count": {"type": "integer"},
-                            "start_position_id": {"type": "long"},
-                            "end_position_id": {"type": "long"},
-                            "start_lat": {"type": "float"},
-                            "start_lng": {"type": "float"},
-                            "end_lat": {"type": "float"},
-                            "end_lng": {"type": "float"},
-
-                            "ign_on_count": {"type": "integer"},
-                            "ign_off_count": {"type": "integer"},
-                            "engine_seconds": {"type": "long"},
-
-                            "summary_date": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd"
-                            },
-                            "stop_seconds": {"type": "long"},
-                            "idle_seconds": {"type": "long"},
-                            "motion_seconds": {"type": "long"},
-
-                            "driving_score": {"type": "integer"},
-                            "harsh_braking": {"type": "integer"},
-                            "harsh_acceleration": {"type": "integer"},
-                            "harsh_cornering": {"type": "integer"},
-                            "over_speed": {"type": "integer"},
-                            "over_speed_seconds": {"type": "long"},
-                            "crash": {"type": "integer"},
-
-                            "utilization": {"type": "float"},
-                            "night_driving": {"type": "integer"},
-                            "fuel_consumption": {"type": "float"},
-
-                            "timestamp": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
-                            },
-                            "timestamp_date": {
-                                "type": "date",
-                                "format": "yyyy-MM-dd"
-                            },
-                            "timestamp_time": {
-                                "type": "keyword",
-                                "ignore_above": 64
-                            },
-                            "timestamp_epoch": {
-                                "type": "long"
-                            },
-                            "indexed_at": {
-                                "type": "date",
-                                "format": "strict_date_optional_time||epoch_millis"
-                            }
-                        }
-                    }
-                },
-            }
         ],
         vector_db="bolt_support_doc"
     )
@@ -316,6 +317,8 @@ def initialize_default_agents():
     AGENTS.add_agent(police_assistant_agent)
 
     # Initialize default agents
+
+
 initialize_default_agents()
 
 
