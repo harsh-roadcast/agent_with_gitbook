@@ -88,7 +88,7 @@ def initialize_default_agents():
             },
 
             {
-                "index": "stop_idle_report",
+                "index": "trip_report",
                 "mappings": {
                  "properties": {
                      "id": {"type": "long"},
