@@ -21,7 +21,7 @@ class ThinkingSignature(dspy.Signature):
         desc="Criteria for determining if the analysis successfully captured user intent and context. Should define what constitutes a successful understanding of the user's query and how it aligns with the system prompt and agent's capabilities")
 
     detailed_user_query: str = dspy.OutputField(
-        desc="Deep understanding of the user's query, including intent, context, and any references to previous messages or data. Should capture the underlying purpose of the question and how it relates to the conversation history.")
+        desc="In maximum 2 lines Deep understanding of the user's query, including intent, context, and any references to previous messages or data. Should capture the underlying purpose of the question and how it relates to the conversation history.")
 
     is_within_context: bool = dspy.OutputField(
         desc="Boolean indicating whether the user query is within the scope and context of the system prompt. True if the query relates to the agent's defined responsibilities and capabilities, False if the query is outside the agent's domain or asking for unrelated functionality")
@@ -110,7 +110,7 @@ class SummarySignature(dspy.Signature):
         default="")
 
     summary: str = dspy.OutputField(
-        desc="Comprehensive, detailed summary that directly answers the user's question using search results. Can be as long as needed to fully address the query. MUST be purely textual with natural language explanations, insights, and findings. NO code snippets, file references, JSON data, technical formatting, or image descriptions. Focus on data insights, trends, patterns, and actionable information in readable prose")
+        desc="In maximum 2 lines Comprehensive, detailed summary that directly answers the user's question using search results from elastic or vector search. Should synthesize key information, insights, and findings from the provided data to provide a clear and concise response to the user's query. If json_results is empty or invalid, return an error message indicating no data available for summarization")
 
 
 class ChartGenerator(dspy.Signature):

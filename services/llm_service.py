@@ -22,7 +22,7 @@ def init_llm():
     local_llm = dspy.LM(model='openai/gpt-4.1-mini', api_key=api_key)
     dspy.settings.configure(lm=local_llm)
     #TODO: Configure custom cache using redis
-    dspy.configure_cache(enable_disk_cache=False, enable_memory_cache=False)
+    dspy.configure_cache(enable_disk_cache=True, enable_memory_cache=True)
     # dspy.configure(callbacks=[AgentLoggingCallback()])
     logger.info(f"Successfully configured DSPy with OpenAI model: {local_llm.model}")
     return local_llm
