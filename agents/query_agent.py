@@ -217,12 +217,8 @@ class QueryAgent(dspy.Module):
                 logger.info(f"Vector query executed successfully, returned {rows_count} results")
 
                 # Generate markdown and yield results
-                title = f"Vector Search Results for '{vector_query[:30]}...'" if len(vector_query) > 30 else f"Vector Search Results for '{vector_query}'"
-                markdown_content = convert_vector_results_to_markdown(results=query_result.result, title=title)
 
                 # Not sending raw JSON results to frontend
-                yield self._create_message("markdown", markdown_content, "markdown")
-
                 # Debug information
                 yield self._create_debug_message("vector_execution", {
                     "vector_query": vector_query,
@@ -235,13 +231,17 @@ class QueryAgent(dspy.Module):
 
             except Exception as vector_exec_error:
                 logger.error(f"Vector execution exception: {vector_exec_error}")
-                yield self._create_error_message(f"Vector search failed: {str(vector_exec_error)}")
-                yield self._create_debug_message("vector_execution", {
-                    "vector_query": vector_query,
-                    "vector_index": request.vector_db_index,
+                error_message = f"Vector search failed: {str(vector_exec_error)}"
+                yield self._create_error_message(error_message)
+
+                # Ensure all values are properly handled for JSON serialization
+                debug_info = {
+                    "vector_query": str(vector_query),
+                    "vector_index": str(request.vector_db_index) if request.vector_db_index else None,
                     "error": str(vector_exec_error),
                     "status": "error"
-                })
+                }
+                yield self._create_debug_message("vector_execution", debug_info)
 
         except Exception as vector_gen_error:
             logger.error(f"Vector query generation failed: {vector_gen_error}")
@@ -271,7 +271,7 @@ class QueryAgent(dspy.Module):
             self.signature_outputs['SummarySignature'] = {'summary': summary_result.summary}
 
             # Yield summary with standardized format
-            yield self._create_message("summary", summary_result.summary, "markdown")
+            yield self._create_message("summary", summary_result.summary, "text")
 
         except Exception as summary_error:
             logger.error(f"Summary generation failed: {summary_error}")

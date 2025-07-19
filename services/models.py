@@ -15,9 +15,8 @@ class QueryResult(BaseModel):
 class VectorQueryResult(BaseModel):
     """Pydantic model for vector query results."""
     success: bool = Field(True, description="Whether the query was successful")
-    result: Dict[str, Any] = Field(default_factory=dict, description="Raw vector search results")
+    result: List[Dict[str, Any]] = Field(default_factory=dict, description="Raw vector search results")
     query_type: str = Field("vector", description="Type of query executed (always vector)")
-    markdown_content: Optional[str] = Field(None, description="Optional markdown representation of the results")
 
 
 class QueryError(BaseModel):

@@ -185,7 +185,7 @@ def execute_vector_query(es_query: dict) -> VectorQueryResult:
     auth_header = get_authorization_header()
     query_text = es_query.get('query_text', '')
     index = es_query.get('index', 'docling_documents')
-    size = max(es_query.get('size', 100), 100)
+    size = min(es_query.get('size', 10), 10)
 
     try:
         # Generate embedding
@@ -236,13 +236,10 @@ def execute_vector_query(es_query: dict) -> VectorQueryResult:
                 clean_documents.append(source_data)
 
         # Generate markdown content
-        markdown_content = convert_json_to_markdown(clean_documents, f"Vector Search Results for '{query_text[:30]}...'")
-
         return VectorQueryResult(
             success=True,
-            result=result_dict,  # Now passing a dictionary instead of the response object
+            result=clean_documents,  # Pass clean documents instead of the full result dict
             query_type="vector",
-            markdown_content=markdown_content
         )
     except Exception as e:
         logger.error(f"Error executing vector query: {e}")
@@ -479,4 +476,3 @@ def convert_vector_results_to_markdown(results: List[Dict[str, Any]], title: str
         markdown_content += "\n"
 
     return markdown_content
-
