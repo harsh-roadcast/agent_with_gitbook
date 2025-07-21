@@ -23,224 +23,44 @@ def initialize_default_agents():
                 "index": "summary_reports",
                 "mappings": {
                     "properties": {
-                        "attributes": {
-                            "properties": {
-                                "center": {
-                                    "type": "long"
-                                },
-                                "crash": {
-                                    "type": "long"
-                                },
-                                "driving_safety_score": {
-                                    "type": "float"
-                                },
-                                "driving_score": {
-                                    "type": "float"
-                                },
-                                "end_odometer": {
-                                    "type": "float"
-                                },
-                                "engine_2_seconds": {
-                                    "type": "long"
-                                },
-                                "excessive_idle_seconds": {
-                                    "type": "long"
-                                },
-                                "excessive_over_speed_seconds": {
-                                    "type": "long"
-                                },
-                                "excessive_stop_seconds": {
-                                    "type": "long"
-                                },
-                                "filter_positions_count": {
-                                    "type": "long"
-                                },
-                                "final_penalty": {
-                                    "type": "float"
-                                },
-                                "first_ignition_on": {
-                                    "type": "date"
-                                },
-                                "first_position_time": {
-                                    "type": "date"
-                                },
-                                "front": {
-                                    "type": "long"
-                                },
-                                "frontLeft": {
-                                    "type": "long"
-                                },
-                                "frontRight": {
-                                    "type": "long"
-                                },
-                                "front_right_motor_time": {
-                                    "type": "long"
-                                },
-                                "fuel_consumption": {
-                                    "type": "long"
-                                },
-                                "geo_in_distance": {
-                                    "type": "long"
-                                },
-                                "geo_in_end": {
-                                    "type": "boolean"
-                                },
-                                "geo_in_seconds": {
-                                    "type": "long"
-                                },
-                                "geo_out_distance": {
-                                    "type": "float"
-                                },
-                                "geo_out_seconds": {
-                                    "type": "long"
-                                },
-                                "harsh_acceleration": {
-                                    "type": "long"
-                                },
-                                "harsh_acceleration_penalty": {
-                                    "type": "long"
-                                },
-                                "harsh_braking": {
-                                    "type": "long"
-                                },
-                                "harsh_braking_penalty": {
-                                    "type": "long"
-                                },
-                                "harsh_cornering": {
-                                    "type": "long"
-                                },
-                                "harsh_turn_penalty": {
-                                    "type": "long"
-                                },
-                                "idle_report_count": {
-                                    "type": "long"
-                                },
-                                "ignition_records": {
-                                    "type": "long"
-                                },
-                                "last_battery": {
-                                    "type": "long"
-                                },
-                                "last_battery_level": {
-                                    "type": "float"
-                                },
-                                "last_ignition_on": {
-                                    "type": "date"
-                                },
-                                "last_position_time": {
-                                    "type": "date"
-                                },
-                                "low_batt_counts": {
-                                    "type": "long"
-                                },
-                                "low_fuel_counts": {
-                                    "type": "long"
-                                },
-                                "more_events_penalty": {
-                                    "type": "long"
-                                },
-                                "motion_records": {
-                                    "type": "long"
-                                },
-                                "night_driving": {
-                                    "type": "long"
-                                },
-                                "over_ignition": {
-                                    "type": "long"
-                                },
-                                "over_motion": {
-                                    "type": "long"
-                                },
-                                "over_speed": {
-                                    "type": "long"
-                                },
-                                "over_speed_penalty": {
-                                    "type": "long"
-                                },
-                                "over_speed_seconds": {
-                                    "type": "long"
-                                },
-                                "penalty_list": {
-                                    "properties": {
-                                        "count": {
-                                            "type": "long"
-                                        },
-                                        "penalty": {
-                                            "type": "long"
-                                        },
-                                        "type": {
-                                            "type": "text",
-                                            "fields": {
-                                                "keyword": {
-                                                    "type": "keyword",
-                                                    "ignore_above": 256
-                                                }
-                                            }
-                                        },
-                                        "weight": {
-                                            "type": "long"
-                                        }
-                                    }
-                                },
-                                "penalty_per_km": {
-                                    "type": "float"
-                                },
-                                "power_cut_counts": {
-                                    "type": "long"
-                                },
-                                "raw_positions_count": {
-                                    "type": "long"
-                                },
-                                "start_battery": {
-                                    "type": "long"
-                                },
-                                "start_battery_level": {
-                                    "type": "float"
-                                },
-                                "start_odometer": {
-                                    "type": "float"
-                                },
-                                "steps": {
-                                    "type": "long"
-                                },
-                                "stop_report_count": {
-                                    "type": "long"
-                                },
-                                "utilization": {
-                                    "type": "float"
-                                }
-                            }
-                        },
                         "avg_speed": {
                             "type": "float"
                         },
                         "crash": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "device_id": {
                             "type": "long"
                         },
-
+                        "device_name": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        },
                         "distance": {
                             "type": "float"
                         },
+                        "driver_name": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
+                        },
                         "driving_safety_score": {
-                            "type": "float"
+                            "type": "integer"
                         },
                         "driving_score": {
-                            "type": "integer"
+                            "type": "long"
                         },
                         "duration": {
                             "type": "long"
-                        },
-                        "duration_seconds": {
-                            "type": "long"
-                        },
-                        "end_battery": {
-                            "type": "long"
-                        },
-                        "end_battery_level": {
-                            "type": "float"
                         },
                         "end_lat": {
                             "type": "float"
@@ -248,14 +68,12 @@ def initialize_default_agents():
                         "end_lng": {
                             "type": "float"
                         },
-                        "end_odometer": {
-                            "type": "float"
-                        },
                         "end_position_id": {
-                            "type": "float"
+                            "type": "long"
                         },
                         "end_time": {
-                            "type": "date"
+                            "type": "date",
+                            "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
                         },
                         "end_time_date": {
                             "type": "date"
@@ -272,6 +90,9 @@ def initialize_default_agents():
                                 }
                             }
                         },
+                        "engine_2_seconds": {
+                            "type": "long"
+                        },
                         "engine_seconds": {
                             "type": "long"
                         },
@@ -282,34 +103,57 @@ def initialize_default_agents():
                             "type": "long"
                         },
                         "final_penalty": {
-                            "type": "long"
+                            "type": "float"
+                        },
+                        "first_ignition_on": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
+                        },
+                        "first_position_time": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
                         },
                         "fuel_consumption": {
                             "type": "float"
                         },
                         "geo_in_count": {
+                            "type": "integer"
+                        },
+                        "geo_in_distance": {
+                            "type": "float"
+                        },
+                        "geo_in_end": {
+                            "type": "integer"
+                        },
+                        "geo_in_seconds": {
                             "type": "long"
                         },
                         "geo_out_count": {
+                            "type": "integer"
+                        },
+                        "geo_out_distance": {
+                            "type": "float"
+                        },
+                        "geo_out_seconds": {
                             "type": "long"
                         },
                         "harsh_acceleration": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "harsh_acceleration_penalty": {
-                            "type": "long"
+                            "type": "float"
                         },
                         "harsh_braking": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "harsh_braking_penalty": {
-                            "type": "long"
+                            "type": "float"
                         },
                         "harsh_cornering": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "harsh_turn_penalty": {
-                            "type": "long"
+                            "type": "float"
                         },
                         "id": {
                             "type": "long"
@@ -318,10 +162,10 @@ def initialize_default_agents():
                             "type": "long"
                         },
                         "ign_off_count": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "ign_on_count": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "ignition_records": {
                             "type": "long"
@@ -329,23 +173,25 @@ def initialize_default_agents():
                         "indexed_at": {
                             "type": "date"
                         },
-                        "lat": {
+                        "last_battery": {
                             "type": "float"
                         },
-                        "lng": {
+                        "last_battery_level": {
                             "type": "float"
+                        },
+                        "last_ignition_on": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
+                        },
+                        "last_position_time": {
+                            "type": "date",
+                            "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
                         },
                         "max_speed": {
                             "type": "float"
                         },
                         "max_speed_time": {
-                            "type": "text",
-                            "fields": {
-                                "keyword": {
-                                    "type": "keyword",
-                                    "ignore_above": 256
-                                }
-                            }
+                            "type": "date"
                         },
                         "max_speed_time_date": {
                             "type": "date"
@@ -372,56 +218,46 @@ def initialize_default_agents():
                             "type": "long"
                         },
                         "night_driving": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "over_ignition": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "over_motion": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "over_speed": {
-                            "type": "long"
+                            "type": "integer"
                         },
                         "over_speed_penalty": {
-                            "type": "long"
+                            "type": "float"
                         },
                         "over_speed_seconds": {
                             "type": "long"
                         },
-                        "penalty_list": {
-                            "properties": {
-                                "count": {
-                                    "type": "long"
-                                },
-                                "penalty": {
-                                    "type": "long"
-                                },
-                                "type": {
-                                    "type": "text",
-                                    "fields": {
-                                        "keyword": {
-                                            "type": "keyword",
-                                            "ignore_above": 256
-                                        }
-                                    }
-                                },
-                                "weight": {
-                                    "type": "long"
-                                }
-                            }
-                        },
                         "penalty_per_km": {
                             "type": "float"
                         },
-                        "position_id": {
+                        "power_cut_counts": {
+                            "type": "integer"
+                        },
+                        "raw_positions_count": {
                             "type": "long"
+                        },
+                        "region": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
                         },
                         "server_id": {
                             "type": "long"
                         },
                         "start_battery": {
-                            "type": "long"
+                            "type": "float"
                         },
                         "start_battery_level": {
                             "type": "float"
@@ -432,14 +268,12 @@ def initialize_default_agents():
                         "start_lng": {
                             "type": "float"
                         },
-                        "start_odometer": {
-                            "type": "float"
-                        },
                         "start_position_id": {
-                            "type": "float"
+                            "type": "long"
                         },
                         "start_time": {
-                            "type": "date"
+                            "type": "date",
+                            "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
                         },
                         "start_time_date": {
                             "type": "date"
@@ -456,47 +290,42 @@ def initialize_default_agents():
                                 }
                             }
                         },
-                        "stop_idle_date": {
-                            "type": "date"
+                        "stop_report_count": {
+                            "type": "integer"
                         },
                         "stop_seconds": {
                             "type": "long"
                         },
                         "summary_date": {
-                            "type": "date"
+                            "type": "date",
+                            "format": "yyyy-MM-dd"
                         },
                         "timestamp": {
-                            "type": "date"
+                            "type": "date",
+                            "format": "yyyy-MM-dd'T'HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"
                         },
                         "timestamp_date": {
-                            "type": "date"
+                            "type": "date",
+                            "format": "yyyy-MM-dd"
                         },
                         "timestamp_epoch": {
                             "type": "long"
                         },
                         "timestamp_time": {
-                            "type": "text",
-                            "fields": {
-                                "keyword": {
-                                    "type": "keyword",
-                                    "ignore_above": 256
-                                }
-                            }
-                        },
-                        "trip_date": {
-                            "type": "date"
-                        },
-                        "type": {
-                            "type": "text",
-                            "fields": {
-                                "keyword": {
-                                    "type": "keyword",
-                                    "ignore_above": 256
-                                }
-                            }
+                            "type": "keyword",
+                            "ignore_above": 64
                         },
                         "utilization": {
                             "type": "float"
+                        },
+                        "vehicle_type": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            }
                         }
                     }
                 }
