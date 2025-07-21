@@ -271,7 +271,7 @@ class QueryAgent(dspy.Module):
             self.signature_outputs['SummarySignature'] = {'summary': summary_result.summary}
 
             # Yield summary with standardized format
-            yield self._create_message("summary", summary_result.summary, "text")
+            yield self._create_message("summary", summary_result.summary, "markdown")
 
         except Exception as summary_error:
             logger.error(f"Summary generation failed: {summary_error}")

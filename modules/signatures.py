@@ -110,7 +110,11 @@ class SummarySignature(dspy.Signature):
         default="")
 
     summary: str = dspy.OutputField(
-        desc="In maximum 2 lines Comprehensive, detailed summary that directly answers the user's question using search results from elastic or vector search. Should synthesize key information, insights, and findings from the provided data to provide a clear and concise response to the user's query. If json_results is empty or invalid, return an error message indicating no data available for summarization")
+        desc="Comprehensive, detailed summary that directly answers the user's question using"
+             " search results from elastic or vector search. Should synthesize key information, insights,"
+             " and findings from the provided data to provide a clear and concise response to the user's query."
+             " If json_results is empty or invalid, return an error message indicating no data available for"
+             " summarization, Always return in markdown format with proper headings and bullet points where applicable.")
 
 
 class ChartGenerator(dspy.Signature):
