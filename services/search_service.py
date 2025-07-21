@@ -90,7 +90,7 @@ def execute_query(query_body: dict, index: str) -> QueryResult:
         )
     except Exception as e:
         logger.error(f"Error executing query on index {index}: {e}")
-        raise QueryError(success=False, error=str(e), error_type="elasticsearch_query")
+        raise e
 
 def _process_aggregations(aggregations: Dict[str, Any]) -> List[Dict[str, Any]]:
     """

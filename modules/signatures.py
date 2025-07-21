@@ -21,7 +21,7 @@ class ThinkingSignature(dspy.Signature):
         desc="Criteria for determining if the analysis successfully captured user intent and context. Should define what constitutes a successful understanding of the user's query and how it aligns with the system prompt and agent's capabilities")
 
     detailed_user_query: str = dspy.OutputField(
-        desc="In maximum 2 lines Deep understanding of the user's query, including intent, context, and any references to previous messages or data. Should capture the underlying purpose of the question and how it relates to the conversation history.")
+        desc="Deep understanding of the user's query, including intent, context, and any references to previous messages or data. Should capture the underlying purpose of the question and how it relates to the conversation history.")
 
     is_within_context: bool = dspy.OutputField(
         desc="Boolean indicating whether the user query is within the scope and context of the system prompt. True if the query relates to the agent's defined responsibilities and capabilities, False if the query is outside the agent's domain or asking for unrelated functionality")
@@ -72,6 +72,8 @@ class EsQueryProcessor(dspy.Signature):
              "appropriate index and optimize field selection, appropriate size limit, and query structure size limit can't be more than 100")
     es_instructions: List[str] = dspy.InputField(
         desc="Elasticsearch-specific query guidelines, best practices, and formatting requirements for generating valid queries")
+
+    previous_es_query: List[str] = dspy.InputField(desc="Previous Elasticsearch query that failed or returned no results. Use to refine the new query and avoid repeating mistakes")
 
     elastic_query: dict = dspy.OutputField(
         desc="Complete Elasticsearch query object with proper syntax including: query clauses, filters, field selection via _source, size limit of 25, and any aggregations or sorting needed")

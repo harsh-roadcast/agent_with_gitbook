@@ -105,7 +105,8 @@ class QueryAgent(dspy.Module):
 
     async def _execute_es_query_processor(self, request: QueryRequest, detailed_query: str):
         """Execute Elasticsearch query processor step with retry logic for failed queries."""
-        max_retries = 2
+        max_retries = 4
+        previous_queries = []  # Track previous query attempts
 
         for attempt in range(max_retries + 1):
             try:
@@ -114,13 +115,16 @@ class QueryAgent(dspy.Module):
                     detailed_user_query=detailed_query,
                     es_schema=request.es_schemas,
                     es_instructions=request.query_instructions,
+                    previous_es_query=previous_queries,  # Pass previous failed queries
                     config={
                         "temperature": self.temperature + attempt * 0.2,
                         "frequency_penalty": self.frequency_penalty + attempt * 0.2,
                     }
                 )
 
-                logger.info(f"ES query generation result on attempt {attempt + 1}: {es_query_result}")
+                logger.info(f"ES query generation result on attempt {attempt + 1}")
+                logger.info(f"Query is {json.dumps(es_query_result.elastic_query, indent=2)}")
+                logger.info(f"Index is {es_query_result.elastic_index}")
 
                 elastic_query = es_query_result.elastic_query
                 elastic_index = es_query_result.elastic_index
@@ -160,6 +164,15 @@ class QueryAgent(dspy.Module):
                 except Exception as es_exec_error:
                     logger.error(f"ES execution exception: {es_exec_error}")
 
+                    print(es_exec_error)
+                    # Add the failed query to previous_queries for next retry
+                    previous_queries.append({
+                        "query": elastic_query,
+                        "index": elastic_index,
+                        "error": str(es_exec_error),
+                        "attempt": attempt + 1
+                    })
+
                     # If this was the last attempt, report the error
                     if attempt == max_retries:
                         error_message = f"Elasticsearch query failed after {max_retries + 1} attempts: {str(es_exec_error)}"
@@ -169,12 +182,13 @@ class QueryAgent(dspy.Module):
                             "elastic_index": elastic_index,
                             "error": str(es_exec_error),
                             "attempts": attempt + 1,
-                            "status": "error"
+                            "status": "error",
+                            "previous_queries": previous_queries
                         })
                         return
 
                     # Continue to next retry attempt
-                    logger.info(f"Retrying ES query generation (attempt {attempt + 2}/{max_retries + 1})")
+                    logger.info(f"Retrying ES query generation (attempt {attempt + 2}/{max_retries + 1}) with previous query context")
                     continue
 
             except Exception as es_gen_error:
@@ -184,7 +198,8 @@ class QueryAgent(dspy.Module):
                 if attempt == max_retries:
                     yield self._create_debug_message("es_generation_error", {
                         "error": str(es_gen_error),
-                        "attempts": attempt + 1
+                        "attempts": attempt + 1,
+                        "previous_queries": previous_queries
                     })
                     return
 

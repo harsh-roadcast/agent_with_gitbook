@@ -23,7 +23,7 @@ class QueryRequest(BaseModel):
     query_instructions: List[str] = Field(..., description="Instructions for processing the query")
     goal: str = Field(..., description="High-level goal or objective of the query processing")
     success_criteria: str = Field(..., description="Criteria for determining if the query processing was successful")
-
+    dsl_rules: List[Dict[str, Any]] = Field(..., description="List of rules in Domain-Specific Language (DSL) format that the query processing should follow")
 
     @classmethod
     def create_with_config(cls, user_query: str, system_prompt: str,

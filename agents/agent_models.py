@@ -22,6 +22,7 @@ class AgentConfig(BaseModel):
         default=None,
         description="High-level goal or objective of the agent"
     )
+    dsl_rules: List[Dict[str, Any]] = Field(..., description="List of rules in Domain-Specific Language (DSL) format that the agent should follow")
 
 
     class Config:

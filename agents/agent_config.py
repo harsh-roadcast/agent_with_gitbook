@@ -640,20 +640,96 @@ def initialize_default_agents():
 
         ],
         query_instructions=[
-            "Always add relevant columns to the query based on the user's request and columns which enhances user experience, add columns which will improve summary and charts. ",
-            "Do not fetch more than 100 rows unless the user explicitly requests more data",
-            "IMPORTANT: Use the 'summary_reports' index as the DEFAULT index for all queries unless specifically directed otherwise. "
-            "This index contains daily aggregated vehicle data and is appropriate for most queries including distance covered, speed metrics, and general vehicle performance. "
-            "The summary_reports index MUST be used for any query about distance covered by vehicles, regardless of whether the query mentions 'summary' or not.",
+            # General rules
+            "All queries must use valid Elasticsearch DSL.",
+            "Use the index `summary_reports` unless specified otherwise.",
+            "Each query should be self-contained and syntactically correct.",
+            "Avoid referencing parent or sibling aggregations using relative paths like '../some_agg'. This is not supported in Elasticsearch.",
 
-            "Use the 'trip_reports' index ONLY when the user explicitly asks for individual trip details or when they specifically mention the word 'trip' or 'journey'. "
-            "This index contains data about individual trips within a day.",
+            # Field usage guidance
+            "Use the following standard field mappings for metrics:",
+            "- `distance` for distance in kilometers.",
+            "- `avg_speed` for average speed in km/h.",
+            "- `utilization` for usage percentage.",
+            "- `summary_date` or `timestamp_date` for date-based filters or histograms.",
+            "- `device_id`, `device_name` for device-level grouping.",
+            "- `driving_score` and `driving_safety_score` for performance analysis.",
 
-            "Use the 'stop_idle_reports' index ONLY when the user specifically asks about stopping or idling events. "
-            "This index contains data about when vehicles stopped or idled."
+            # Date and time handling
+            "Always filter by a date range using `summary_date` or `timestamp_date`.",
+            "Use `date_histogram` instead of `terms` on `date` fields. Set `calendar_interval` to `day`, `week`, or `month` as needed.",
+            "For recent data, use: `gte: now/M`, `lte: now` (for current month).",
+
+            # Aggregations and metrics
+            "To calculate trends over time, use `date_histogram` + metric aggregation (e.g., `avg` on `distance`).",
+            "To compare days with a monthly average, run two separate queries: first compute monthly average, then filter daily values using a fixed threshold.",
+            "Avoid using `bucket_selector` with cross-level references. Instead, use inline `script` comparisons to constants.",
+
+            # Response formatting
+            "Include `_source` fields explicitly if returning documents.",
+            "Sort results by `summary_date` or `timestamp_date` descending when showing recent trends.",
+
+            # Example patterns
+            "Example: Daily trend of distance in current month:",
+            "- Use `date_histogram` on `summary_date` with `calendar_interval: day`.",
+            "- Use `avg` aggregation on `distance` within each bucket.",
+
+            "Example: Filter devices with avg speed > 60 in current month:",
+            "- Use `range` filter on `summary_date`.",
+            "- Use `terms` aggregation on `device_id` or `device_name.keyword`.",
+            "- Use `avg` on `avg_speed` and a `bucket_selector` with threshold script.",
+
+            # Index-specific guidance
+            "Use `summary_reports` for overall daily metrics per device.",
+            "Use `trip_reports` for trip-level analysis (more granular).",
+            "Use `stop_idle_reports` for idle or stop durations on a given day.",
+
+            # Filters and constraints
+            "Do not perform joins between indices. Elasticsearch does not support multi-index joins.",
+            "Use filters inside the `query.bool.filter` array only.",
+
+            # Visualizations
+            "If asked to generate visual summaries or chart-friendly data, use aggregations over time (like `date_histogram`) and ensure bucket keys are sorted in descending order."
         ],
-
-        vector_db="bolt_support_doc",
+        dsl_rules=[
+            {
+                "invalid": "buckets_path: ../avg_monthly_distance",
+                "reason": "Elasticsearch does not support referencing sibling/parent aggregations from within nested aggregations.",
+                "fix": "Run the monthly average calculation as a separate query and inject the value as a constant."
+            },
+            {
+                "field": "summary_date",
+                "preferred_agg": "date_histogram",
+                "reason": "`summary_date` is a `date` field and should be aggregated using a date histogram, not a terms aggregation."
+            },
+            {
+                "aggregation": "bucket_selector",
+                "allowed_context": "within same aggregation level only",
+                "reason": "`bucket_selector` must only reference sibling aggregations within the same bucket."
+            },
+            {
+                "fields": ["timestamp_date", "summary_date"],
+                "filter_format": "range",
+                "example": {
+                    "range": {
+                        "summary_date": {
+                            "gte": "now/M",
+                            "lte": "now"
+                        }
+                    }
+                },
+                "reason": "Always filter date fields using a `range` clause."
+            },
+            {
+                "index": "summary_reports",
+                "allowed_fields": [
+                    "distance", "avg_speed", "utilization",
+                    "summary_date", "device_id", "device_name", "driving_score"
+                ],
+                "reason": "Restrict aggregations and filters to relevant fields only to ensure semantic accuracy."
+            }
+        ],
+    vector_db="bolt_support_doc",
         goal=(
             "Provide accurate and helpful responses to Bolt Delivery SaaS clients for both support and reporting-related queries. "
             "Use the vector database for support documentation, and leverage Elasticsearch schemas to generate meaningful summaries and charts for reporting questions."
@@ -680,7 +756,8 @@ def initialize_default_agents():
         vector_db="synco_support_doc",
         query_instructions=[],
         goal="Assist Synco Delivery SaaS clients with support and reporting questions, using the provided vector database and Elasticsearch schemas.",
-        success_criteria=" Successfully answer support and reporting questions using the provided vector database and Elasticsearch schemas."
+        success_criteria=" Successfully answer support and reporting questions using the provided vector database and Elasticsearch schemas.",
+        dsl_rules=[],
     )
 
     # General Purpose Agent
@@ -695,7 +772,8 @@ def initialize_default_agents():
         vector_db="docling_documents",
         query_instructions=[],
         goal="Assist police departments with general support questions and provide information on various topics, using the provided vector database.",
-        success_criteria=" Successfully answer general support questions using the provided vector database."
+        success_criteria=" Successfully answer general support questions using the provided vector database.",
+        dsl_rules=[],
     )
 
     # Add agents to the list

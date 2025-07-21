@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def init_llm():
     """Initialize the DSPy language model without usage tracking"""
-    mlflow.set_tracking_uri("http://127.0.0.1:5000")
+    mlflow.set_tracking_uri("http://127.0.0.1:5002")
     # Create a unique name for your experiment.
     mlflow.set_experiment("DSPy-rsdc")
     mlflow.dspy.autolog(log_traces_from_eval=True)

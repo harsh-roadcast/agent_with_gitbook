@@ -94,6 +94,7 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
         query_instructions=agent_config.query_instructions,
         goal=agent_config.goal,
         success_criteria=agent_config.success_criteria,
+        dsl_rules=agent_config.dsl_rules
     )
 
     # Process query asynchronously
@@ -186,6 +187,7 @@ async def handle_non_streaming_request(user_message: str, session_id: str, user_
         query_instructions=agent_config.query_instructions,
         goal=agent_config.goal,
         success_criteria=agent_config.success_criteria,
+        dsl_rules=agent_config.dsl_rules
     )
 
     # Initialize query agent
