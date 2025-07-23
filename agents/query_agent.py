@@ -103,16 +103,30 @@ class QueryAgent(dspy.Module):
             return "[]"
         return json.dumps(query_result.result)
 
-    async def _execute_es_query_processor(self, request: QueryRequest, detailed_query: str):
+    def _prepare_json_data_list(self, query_results):
+        """Convert multiple query results to list of dictionaries."""
+        if not query_results:
+            return []
+
+        json_results = []
+        for query_result in query_results:
+            if query_result is None or not query_result.result:
+                continue
+            json_results.extend(query_result.result)
+
+        return json_results
+
+    async def _execute_es_query_processor(self, request: QueryRequest, detailed_query_list: List[str]):
         """Execute Elasticsearch query processor step with retry logic for failed queries."""
         max_retries = 4
         previous_queries = []  # Track previous query attempts
+        all_query_results = []
 
         for attempt in range(max_retries + 1):
             try:
                 # Generate ES query with temperature and frequency penalty that increase with each retry
                 es_query_result = self.es_query_processor(
-                    detailed_user_query=detailed_query,
+                    detailed_user_query=detailed_query_list,
                     es_schema=request.es_schemas,
                     es_instructions=request.query_instructions,
                     previous_es_query=previous_queries,  # Pass previous failed queries
@@ -122,79 +136,91 @@ class QueryAgent(dspy.Module):
                     }
                 )
 
+                # EsQueryProcessor now returns lists
+                elastic_queries = es_query_result.elastic_query
+                elastic_indices = es_query_result.elastic_index
+
                 logger.info(f"ES query generation result on attempt {attempt + 1}")
-                logger.info(f"Query is {json.dumps(es_query_result.elastic_query, indent=2)}")
-                logger.info(f"Index is {es_query_result.elastic_index}")
+                logger.info(f"Generated {len(elastic_queries)} queries")
 
-                elastic_query = es_query_result.elastic_query
-                elastic_index = es_query_result.elastic_index
-                self.signature_outputs['EsQueryProcessor'] = {'elastic_query': elastic_query, 'elastic_index': elastic_index}
+                self.signature_outputs['EsQueryProcessor'] = {
+                    'elastic_query': elastic_queries,
+                    'elastic_index': elastic_indices
+                }
 
-                try:
-                    # Execute query
-                    query_result = execute_query(query_body=elastic_query, index=elastic_index)
-                    rows_count = len(query_result.result) if query_result.result else 0
-                    logger.info(f"ES query executed successfully, returned {rows_count} results")
+                # Execute each query
+                for i, (query, index) in enumerate(zip(elastic_queries, elastic_indices)):
+                    try:
+                        logger.info(f"Executing query {i+1}/{len(elastic_queries)}: {json.dumps(query, indent=2)}")
+                        logger.info(f"Index: {index}")
 
-                    debug_info = {
-                        "elastic_query": elastic_query,
-                        "elastic_index": elastic_index,
-                        "rows_count": rows_count,
-                        "attempts": attempt + 1,
-                        "status": "success_no_data" if rows_count == 0 else "success"
-                    }
+                        query_result = execute_query(query_body=query, index=index)
+                        rows_count = len(query_result.result) if query_result.result else 0
+                        logger.info(f"Query {i+1} executed successfully, returned {rows_count} results")
 
-                    if not query_result.result:
-                        # No results found
-                        # Not sending raw JSON results to frontend
-                        yield self._create_message("markdown_table", "No data found.", "markdown")
-                        yield "debug", {**debug_info, "timestamp": time.time()}
-                        yield self._create_debug_message("es_execution", debug_info)
-                    else:
-                        # Results found - yield them
-                        markdown_table = getattr(query_result, 'markdown_content',
-                                              "Results found but no formatted display available.")
-                        # Not sending raw JSON results to frontend
-                        yield self._create_message("markdown_table", markdown_table, "markdown")
-                        yield self._create_debug_message("es_execution", debug_info)
+                        if query_result.result:
+                            all_query_results.append(query_result)
 
-                    yield "query_result", query_result
-                    return  # Success - exit retry loop
+                            # Yield results for each successful query
+                            markdown_table = getattr(query_result, 'markdown_content',
+                                                  f"Query {i+1} results found but no formatted display available.")
+                            yield self._create_message("markdown_table", markdown_table, "markdown")
 
-                except Exception as es_exec_error:
-                    logger.error(f"ES execution exception: {es_exec_error}")
+                    except Exception as es_exec_error:
+                        logger.error(f"ES execution exception for query {i+1}: {es_exec_error}")
 
-                    print(es_exec_error)
-                    # Add the failed query to previous_queries for next retry
-                    previous_queries.append({
-                        "query": elastic_query,
-                        "index": elastic_index,
-                        "error": str(es_exec_error),
-                        "attempt": attempt + 1
-                    })
-
-                    # If this was the last attempt, report the error
-                    if attempt == max_retries:
-                        error_message = f"Elasticsearch query failed after {max_retries + 1} attempts: {str(es_exec_error)}"
-                        yield self._create_error_message(error_message)
-                        yield self._create_debug_message("es_execution", {
-                            "elastic_query": elastic_query,
-                            "elastic_index": elastic_index,
+                        # Add the failed query to previous_queries for next retry
+                        previous_queries.append({
+                            "query": query,
+                            "index": index,
                             "error": str(es_exec_error),
-                            "attempts": attempt + 1,
-                            "status": "error",
-                            "previous_queries": previous_queries
+                            "attempt": attempt + 1,
+                            "query_number": i + 1
                         })
-                        return
 
-                    # Continue to next retry attempt
-                    logger.info(f"Retrying ES query generation (attempt {attempt + 2}/{max_retries + 1}) with previous query context")
-                    continue
+                # Check if we got any results
+                if all_query_results:
+                    yield self._create_debug_message("es_execution", {
+                        "total_queries": len(elastic_queries),
+                        "successful_queries": len(all_query_results),
+                        "total_rows": sum(len(qr.result) for qr in all_query_results),
+                        "attempts": attempt + 1,
+                        "status": "success"
+                    })
+                    yield "query_result", all_query_results
+                    return
+                elif not previous_queries:
+                    # No errors but no results
+                    yield self._create_message("markdown_table", "No data found.", "markdown")
+                    yield self._create_debug_message("es_execution", {
+                        "total_queries": len(elastic_queries),
+                        "successful_queries": 0,
+                        "total_rows": 0,
+                        "attempts": attempt + 1,
+                        "status": "success_no_data"
+                    })
+                    yield "query_result", []
+                    return
+
+                # If we have previous queries (errors), continue to retry
+                if attempt == max_retries:
+                    error_message = f"Elasticsearch queries failed after {max_retries + 1} attempts"
+                    yield self._create_error_message(error_message)
+                    yield self._create_debug_message("es_execution", {
+                        "total_queries": len(elastic_queries),
+                        "successful_queries": len(all_query_results),
+                        "attempts": attempt + 1,
+                        "status": "error",
+                        "previous_queries": previous_queries
+                    })
+                    return
+
+                logger.info(f"Retrying ES query generation (attempt {attempt + 2}/{max_retries + 1}) with previous query context")
+                continue
 
             except Exception as es_gen_error:
                 logger.error(f"ES query generation failed on attempt {attempt + 1}: {es_gen_error}")
 
-                # If this was the last attempt, report the error
                 if attempt == max_retries:
                     yield self._create_debug_message("es_generation_error", {
                         "error": str(es_gen_error),
@@ -203,16 +229,15 @@ class QueryAgent(dspy.Module):
                     })
                     return
 
-                # Continue to next retry attempt
                 logger.info(f"Retrying ES query generation (attempt {attempt + 2}/{max_retries + 1})")
                 continue
 
-    async def _execute_vector_query_processor(self, request: QueryRequest, detailed_query: str):
+    async def _execute_vector_query_processor(self, request: QueryRequest, detailed_query_list: List[str]):
         """Execute Vector query processor step."""
         try:
             # Generate vector query
             vector_query_result = self.vector_query_processor(
-                detailed_user_query=detailed_query,
+                detailed_user_query=detailed_query_list,
                 config={"temperature": self.temperature, "frequency_penalty": self.frequency_penalty}
             )
 
@@ -231,9 +256,6 @@ class QueryAgent(dspy.Module):
                 rows_count = len(query_result.result) if query_result.result else 0
                 logger.info(f"Vector query executed successfully, returned {rows_count} results")
 
-                # Generate markdown and yield results
-
-                # Not sending raw JSON results to frontend
                 # Debug information
                 yield self._create_debug_message("vector_execution", {
                     "vector_query": vector_query,
@@ -242,14 +264,13 @@ class QueryAgent(dspy.Module):
                     "status": "success"
                 })
 
-                yield "query_result", query_result
+                yield "query_result", [query_result] if query_result.result else []
 
             except Exception as vector_exec_error:
                 logger.error(f"Vector execution exception: {vector_exec_error}")
                 error_message = f"Vector search failed: {str(vector_exec_error)}"
                 yield self._create_error_message(error_message)
 
-                # Ensure all values are properly handled for JSON serialization
                 debug_info = {
                     "vector_query": str(vector_query),
                     "vector_index": str(request.vector_db_index) if request.vector_db_index else None,
@@ -264,20 +285,20 @@ class QueryAgent(dspy.Module):
                 "error": str(vector_gen_error)
             })
 
-    async def _execute_summary_signature(self, request: QueryRequest, detailed_query: str, query_result):
+    async def _execute_summary_signature(self, request: QueryRequest, detailed_query_list: List[str], query_results):
         """Execute summary signature step."""
         try:
-            # Convert query results to JSON string
-            json_data = self._prepare_json_data(query_result)
+            # Convert query results to list of dictionaries
+            json_data = self._prepare_json_data_list(query_results)
 
-            if query_result is None or not query_result.result:
+            if not json_data:
                 logger.info("No data available for summary generation")
             else:
-                logger.info(f"Generating summary from {len(query_result.result)} results")
+                logger.info(f"Generating summary from {len(json_data)} total results")
 
             # Generate summary
             summary_result = self.summary_processor(
-                detailed_user_query=detailed_query,
+                detailed_user_query=detailed_query_list,
                 json_results=json_data,
                 config={"temperature": self.temperature, "frequency_penalty": self.frequency_penalty}
             )
@@ -292,28 +313,34 @@ class QueryAgent(dspy.Module):
             logger.error(f"Summary generation failed: {summary_error}")
             yield self._create_debug_message("summary_error", {"error": str(summary_error)})
 
-    async def _execute_chart_generator(self, request: QueryRequest, detailed_query: str, query_result):
-        """Execute chart generator step."""
+    async def _execute_chart_generator(self, request: QueryRequest, detailed_query_list: List[str], query_results):
+        """Execute ChartGenerator step."""
         try:
-            # Convert query results to JSON string
-            json_data = self._prepare_json_data(query_result)
+            # Convert query results to list of dictionaries
+            json_data = self._prepare_json_data_list(query_results)
 
-            # Generate chart configuration
+            # Generate chart configuration using ChartGenerator
             chart_result = self.chart_processor(
-                detailed_user_query=detailed_query,
-                json_results=json_data,
+                system_prompt=request.system_prompt,
+                sql_results=json_data,
+                detailed_user_query=detailed_query_list,
                 config={"temperature": self.temperature, "frequency_penalty": self.frequency_penalty}
             )
 
-            # Check if chart configuration was generated
-            if hasattr(chart_result, 'chart_config') and chart_result.chart_config:
+            # ChartGenerator returns a list of chart configurations
+            if hasattr(chart_result, 'highchart_config') and chart_result.highchart_config:
                 # Store chart configuration in signature outputs
-                self.signature_outputs['ChartGenerator'] = {'chart_config': chart_result.chart_config}
+                self.signature_outputs['ChartGenerator'] = {'highchart_config': chart_result.highchart_config}
 
-                # Yield chart with standardized format
-                yield self._create_message("highchart_config", chart_result.chart_config, "chart")
+                # Yield each chart configuration
+                for i, chart_config in enumerate(chart_result.highchart_config):
+                    chart_title = f"Chart {i+1}" if len(chart_result.highchart_config) > 1 else "Chart"
+                    yield self._create_message("highchart_config", {
+                        "title": chart_title,
+                        "config": chart_config
+                    }, "chart")
             else:
-                logger.warning("Chart generator did not return a chart configuration")
+                logger.warning("ChartGenerator did not return chart configurations")
 
         except Exception as chart_error:
             logger.error(f"Chart generation failed: {chart_error}")
@@ -464,7 +491,7 @@ class QueryAgent(dspy.Module):
                 logger.info(f"Running in test mode: workflow overridden to only use {workflow_steps[0]}")
 
             # Step 3: Execute workflow steps dynamically
-            query_result = None
+            query_results = []  # Changed to handle multiple results
             has_data = False
 
             for step in workflow_steps:
@@ -481,22 +508,28 @@ class QueryAgent(dspy.Module):
                 if step == "EsQueryProcessor":
                     async for result in self._execute_es_query_processor(request, detailed_query):
                         if result[0] == "query_result":
-                            query_result = result[1]
-                            has_data = query_result is not None and hasattr(query_result, 'result') and len(query_result.result) > 0
+                            query_results = result[1]  # Now expects a list
+                            has_data = query_results and any(
+                                qr is not None and hasattr(qr, 'result') and len(qr.result) > 0
+                                for qr in query_results
+                            )
                         else:
                             yield result
 
                 elif step == "VectorQueryProcessor":
                     async for result in self._execute_vector_query_processor(request, detailed_query):
                         if result[0] == "query_result":
-                            query_result = result[1]
-                            has_data = query_result is not None and hasattr(query_result, 'result') and len(query_result.result) > 0
+                            query_results = result[1]  # Now expects a list
+                            has_data = query_results and any(
+                                qr is not None and hasattr(qr, 'result') and len(qr.result) > 0
+                                for qr in query_results
+                            )
                         else:
                             yield result
 
                 elif step == "SummarySignature":
                     if has_data:
-                        async for result in self._execute_summary_signature(request, detailed_query, query_result):
+                        async for result in self._execute_summary_signature(request, detailed_query, query_results):
                             yield result
                     else:
                         logger.info("Skipping summary generation because query returned no data")
@@ -510,9 +543,9 @@ class QueryAgent(dspy.Module):
                             "timestamp": time.time()
                         }
 
-                elif step == "ChartGenerator":
+                elif step == "ChartGenerator" or step == "HighChartGenerator":
                     if has_data:
-                        async for result in self._execute_chart_generator(request, detailed_query, query_result):
+                        async for result in self._execute_chart_generator(request, detailed_query, query_results):
                             yield result
                     else:
                         logger.info("Skipping chart generation because query returned no data")

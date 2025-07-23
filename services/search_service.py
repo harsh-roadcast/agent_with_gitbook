@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import time
@@ -95,6 +96,7 @@ def execute_query(query_body: dict, index: str) -> QueryResult:
 def _process_aggregations(aggregations: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Process Elasticsearch aggregation results and convert them to a flat structure.
+    Handles nested buckets and various aggregation types to create a tabular representation.
 
     Args:
         aggregations: The aggregations part of an Elasticsearch response
@@ -103,74 +105,118 @@ def _process_aggregations(aggregations: Dict[str, Any]) -> List[Dict[str, Any]]:
         List of dictionaries representing the aggregation data in a flat, consumable format
     """
     processed_data = []
+    logger.debug(f"Processing aggregations: {json.dumps(aggregations)}")
 
-    # Recursively process aggregation buckets
-    def process_bucket(bucket, parent_key=None, parent_data=None):
-        if parent_data is None:
-            parent_data = {}
+    # Helper function to process any bucket type recursively
+    def process_bucket(bucket, parent_key, parent_metadata=None, depth=0):
+        indent = "  " * depth
+        logger.info(f"{indent}[DEBUG] Processing bucket for key: '{parent_key}' at depth {depth}")
 
-        data = parent_data.copy()
+        if parent_metadata is None:
+            parent_metadata = {}
+            logger.debug(f"{indent}No parent metadata provided, initializing empty dict")
+        else:
+            logger.debug(f"{indent}Parent metadata: {json.dumps(parent_metadata)}")
 
-        # Add bucket key/value
-        if parent_key and 'key' in bucket:
-            if isinstance(bucket['key'], (str, int, float)):
-                data[parent_key] = bucket['key']
-            elif 'key_as_string' in bucket:
-                data[parent_key] = bucket['key_as_string']
+        record = parent_metadata.copy()
+
+        # Always prefer key_as_string (for dates and formatted values) over raw key
+        if 'key_as_string' in bucket:
+            record[f"{parent_key}"] = bucket['key_as_string']
+            logger.debug(f"{indent}Using key_as_string: '{bucket['key_as_string']}' for field '{parent_key}'")
+        elif 'key' in bucket:
+            record[f"{parent_key}"] = bucket['key']
+            logger.debug(f"{indent}Using key: '{bucket['key']}' for field '{parent_key}'")
 
         # Add doc_count if present
         if 'doc_count' in bucket:
-            data['doc_count'] = bucket['doc_count']
+            record[f"{parent_key}_count"] = bucket['doc_count']
+            logger.debug(f"{indent}Added doc_count: {bucket['doc_count']} as '{parent_key}_count'")
 
-        # Process metric aggregations (sum, avg, etc.)
-        for key, value in bucket.items():
-            if key not in ('key', 'key_as_string', 'doc_count', 'buckets') and isinstance(value, dict) and 'value' in value:
-                data[key] = value['value']
+        # Process metrics and nested buckets
+        for field, value in bucket.items():
+            if field not in ('key', 'key_as_string', 'doc_count'):
+                logger.debug(f"{indent}Processing field: '{field}' of type: {type(value).__name__}")
 
-        # Handle top_hits aggregation
-        if 'top_hit' in bucket or any(k.startswith('top_hit') for k in bucket.keys()):
-            for top_hit_key, top_hit_value in bucket.items():
-                if top_hit_key == 'top_hit' or top_hit_key.startswith('top_hit'):
-                    hits = top_hit_value.get('hits', {}).get('hits', [])
-                    if hits:
-                        source = hits[0].get('_source', {})
-                        if source:
-                            # Use original source fields directly
-                            for src_key, src_value in source.items():
-                                # Avoid overwriting existing keys
-                                if src_key not in data:
-                                    data[src_key] = src_value
+                # Handle metric aggregations (avg, sum, etc.)
+                if isinstance(value, dict) and 'value' in value:
+                    record[field] = value['value']
+                    logger.debug(f"{indent}Added metric value: {value['value']} for field '{field}'")
 
-        # Process nested buckets
-        has_nested_buckets = False
-        for key, value in bucket.items():
-            if isinstance(value, dict) and 'buckets' in value:
-                has_nested_buckets = True
-                for nested_bucket in value['buckets']:
-                    process_bucket(nested_bucket, key, data)
+                # Handle special max_bucket type aggs
+                elif isinstance(value, dict) and 'keys' in value and 'value' in value:
+                    record[f"{field}_value"] = value['value']
+                    keys_str = ", ".join(value['keys']) if isinstance(value['keys'], list) else value['keys']
+                    record[f"{field}_key"] = keys_str
+                    logger.debug(f"{indent}Added max_bucket: value={value['value']}, keys={keys_str} for field '{field}'")
 
-        # If this is a terminal bucket (no nested buckets), add data to result
-        if not has_nested_buckets and data:
-            # Make sure we don't duplicate entries
-            if data not in processed_data:
-                processed_data.append(data)
+                # Handle nested buckets
+                elif isinstance(value, dict) and 'buckets' in value:
+                    logger.debug(f"{indent}Found nested buckets in field '{field}' with {len(value['buckets'])} buckets")
 
-        # Handle edge case: if we have useful data but also nested buckets,
-        # we might want to include this level as well
-        elif has_nested_buckets and len(data) > 2 and any(k not in ['doc_count', parent_key] for k in data.keys()):
-            if data not in processed_data:
-                processed_data.append(data)
+                    # If it's a multi-bucket nested aggregation
+                    if len(value['buckets']) > 1:
+                        logger.debug(f"{indent}Processing multi-bucket nested aggregation for field '{field}'")
+                        nested_records = []
+                        for i, nested_bucket in enumerate(value['buckets']):
+                            logger.debug(f"{indent}Processing nested bucket {i+1}/{len(value['buckets'])} for field '{field}'")
+                            # Create a new record for each nested bucket
+                            nested_record = process_bucket(nested_bucket, field, record.copy(), depth+1)
+                            if nested_record:
+                                nested_records.append(nested_record)
 
-    # Process each top-level aggregation
-    for agg_name, agg_value in aggregations.items():
-        if 'buckets' in agg_value:
-            for bucket in agg_value['buckets']:
-                process_bucket(bucket, agg_name)
-        elif 'value' in agg_value:
-            # Simple metric aggregation
-            processed_data.append({agg_name: agg_value['value']})
+                        logger.debug(f"{indent}Processed {len(nested_records)} nested records for field '{field}'")
+                        if nested_records:
+                            return nested_records
 
-    logger.info(f"Processed {len(processed_data)} records from aggregation results")
+                    # If it's a single-bucket nested aggregation (like a filter)
+                    elif len(value['buckets']) == 1:
+                        logger.debug(f"{indent}Processing single-bucket nested aggregation for field '{field}'")
+                        nested_bucket = value['buckets'][0]
+                        # Process any fields from the nested bucket
+                        for nested_field, nested_value in nested_bucket.items():
+                            if nested_field not in ('key', 'key_as_string', 'doc_count'):
+                                if isinstance(nested_value, dict) and 'value' in nested_value:
+                                    record[f"{field}_{nested_field}"] = nested_value['value']
+                                    logger.debug(f"{indent}Added nested metric: {nested_value['value']} for field '{field}_{nested_field}'")
+                                elif nested_field == 'key' and 'key_as_string' not in nested_bucket:
+                                    record[field] = nested_value
+                                    logger.debug(f"{indent}Added nested key: {nested_value} for field '{field}'")
+
+                    # Empty buckets
+                    else:
+                        logger.debug(f"{indent}Empty buckets for field '{field}', setting to None")
+                        record[field] = None
+
+        logger.debug(f"{indent}Completed processing bucket for key '{parent_key}', record: {json.dumps(record)}")
+        return record
+
+    # Process top-level aggregations
+    for agg_name, agg_data in aggregations.items():
+        logger.info(f"Processing top-level aggregation: '{agg_name}'")
+
+        # Handle bucket aggregations
+        if 'buckets' in agg_data:
+            logger.debug(f"Found {len(agg_data['buckets'])} buckets in '{agg_name}'")
+
+            for i, bucket in enumerate(agg_data['buckets']):
+                logger.debug(f"Processing bucket {i+1}/{len(agg_data['buckets'])} for '{agg_name}'")
+                result = process_bucket(bucket, agg_name)
+
+                # Handle the case where we get a list of records back (nested buckets)
+                if isinstance(result, list):
+                    logger.debug(f"Adding {len(result)} nested records from '{agg_name}' to processed data")
+                    processed_data.extend(result)
+                else:
+                    logger.debug(f"Adding single record from '{agg_name}' to processed data")
+                    processed_data.append(result)
+
+        # Handle simple metric aggregations at top level
+        elif 'value' in agg_data:
+            logger.debug(f"Found simple metric aggregation '{agg_name}' with value {agg_data['value']}")
+            processed_data.append({agg_name: agg_data['value']})
+
+    logger.info(f"Processed {len(processed_data)} total records from aggregation results")
     return processed_data
 
 def generate_embedding(text: str) -> List[float]:
@@ -250,8 +296,10 @@ def execute_vector_query(es_query: dict) -> VectorQueryResult:
 def convert_json_to_markdown(data, title: str = "Query Results") -> str:
     """Convert JSON query results to markdown formatted table."""
     logger.info("🔄 Starting markdown generation from JSON data")
+    logger.info(f"Data type: {type(data).__name__}, Title: '{title}'")
 
     if not data:
+        logger.warning("No data provided for markdown conversion")
         return f"# {title}\n\nNo data provided."
 
     records = []
@@ -259,14 +307,17 @@ def convert_json_to_markdown(data, title: str = "Query Results") -> str:
 
     # Handle standard ES response with hits
     if isinstance(data, dict) and 'hits' in data:
+        logger.info("Processing standard Elasticsearch response with hits")
         hits = data['hits']['hits']
         if not hits:
+            logger.warning("No hits found in Elasticsearch response")
             return f"# {title}\n\nNo results found."
 
         for hit in hits:
             source = hit.get('_source', {})
             if source:
                 records.append(source)
+                logger.debug(f"Added hit source: {json.dumps(source)[:100]}...")
 
         total_hits = data['hits']['total']
         if isinstance(total_hits, dict):
@@ -274,23 +325,43 @@ def convert_json_to_markdown(data, title: str = "Query Results") -> str:
         else:
             total_count = total_hits if total_hits else len(records)
 
+        logger.info(f"Processed {len(records)} hits from {total_count} total hits")
+
     # Handle aggregation results (already processed into list of dictionaries)
     elif isinstance(data, list):
+        logger.info(f"Processing list data with {len(data)} items")
         records = [record for record in data if isinstance(record, dict)]
         total_count = len(records)
+        logger.info(f"Filtered to {len(records)} dictionary records")
 
         # Special handling for aggregation results with nested structure
         if records and any(isinstance(v, dict) for record in records for v in record.values()):
+            logger.info("Detected complex nested structure in aggregation results, using special formatter")
+
+            # Log a sample of the data structure
+            if records:
+                sample = records[0]
+                logger.debug(f"Sample record structure: {json.dumps(sample)}")
+
+                # Find and log any nested dictionary values
+                for key, value in sample.items():
+                    if isinstance(value, dict):
+                        logger.debug(f"Nested dictionary found at key '{key}': {json.dumps(value)}")
+
             return _format_complex_aggregations(records, title)
 
     # Handle single dictionary result
     elif isinstance(data, dict):
+        logger.info("Processing single dictionary result")
         records = [data]
         total_count = 1
+        logger.debug(f"Dictionary data: {json.dumps(data)[:100]}...")
     else:
+        logger.warning(f"Unsupported data format: {type(data).__name__}")
         return f"# {title}\n\nUnsupported data format provided."
 
     if not records:
+        logger.warning("No valid records found after processing")
         return f"# {title}\n\nNo valid records found."
 
     # Extract all fields from records
@@ -299,10 +370,14 @@ def convert_json_to_markdown(data, title: str = "Query Results") -> str:
         if isinstance(record, dict):
             all_fields.update(record.keys())
 
+    logger.info(f"Extracted {len(all_fields)} unique fields from records")
+    logger.debug(f"Fields: {sorted(list(all_fields))}")
+
     # Sort fields alphabetically for consistent display
     all_fields = sorted(list(all_fields))
 
     # Start building markdown table
+    logger.info("Building markdown table")
     markdown = f"# {title}\n\n"
 
     if all_fields:
@@ -310,12 +385,20 @@ def convert_json_to_markdown(data, title: str = "Query Results") -> str:
         header = "| " + " | ".join(all_fields) + " |"
         separator = "| " + " | ".join(["---"] * len(all_fields)) + " |"
         markdown += header + "\n" + separator + "\n"
+        logger.debug(f"Created header with {len(all_fields)} columns")
 
         # Add rows
-        for record in records:
+        for i, record in enumerate(records):
             row_data = []
+            logger.debug(f"Processing record {i+1}/{len(records)}")
+
             for field in all_fields:
                 value = record.get(field, "")
+
+                # Log any potential problematic values
+                if isinstance(value, (list, dict)):
+                    logger.warning(f"Complex value type {type(value).__name__} for field '{field}' in record {i+1}")
+
                 # Format numbers for better readability
                 if isinstance(value, (int, float)):
                     if isinstance(value, float):
@@ -324,6 +407,11 @@ def convert_json_to_markdown(data, title: str = "Query Results") -> str:
                         str_value = f"{value:,}"
                 else:
                     str_value = str(value)
+
+                # Check for potentially problematic markdown characters
+                if '|' in str_value or '\n' in str_value:
+                    logger.debug(f"Field '{field}' contains special characters that need escaping")
+
                 # Escape pipes and newlines for markdown
                 str_value = str_value.replace("|", "\\|").replace("\n", " ")
                 row_data.append(str_value)
@@ -350,6 +438,8 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
     Returns:
         Formatted markdown string
     """
+    logger.info(f"Formatting complex aggregations with {len(data)} records and title '{title}'")
+
     # Start with title
     markdown = f"# {title}\n\n"
 
@@ -361,9 +451,13 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
                 first_level_keys.add(key)
                 break
 
+    logger.debug(f"Identified potential grouping keys: {first_level_keys}")
+
     # If we have clear grouping fields
     if first_level_keys and len(first_level_keys) == 1:
         group_key = list(first_level_keys)[0]
+        logger.info(f"Using '{group_key}' as the grouping field")
+
         groups = {}
 
         # Group by the first level key
@@ -374,8 +468,12 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
                     groups[group_value] = []
                 groups[group_value].append(item)
 
+        logger.info(f"Created {len(groups)} distinct groups based on '{group_key}'")
+
         # Create section for each group
-        for group_value, group_data in groups.items():
+        for group_idx, (group_value, group_data) in enumerate(groups.items()):
+            logger.debug(f"Processing group {group_idx+1}/{len(groups)}: {group_key}={group_value} with {len(group_data)} records")
+
             markdown += f"## {group_key}: {group_value}\n\n"
 
             # Get fields for this group
@@ -386,9 +484,11 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
             # Remove the group key since it's redundant in the table
             if group_key in all_fields:
                 all_fields.remove(group_key)
+                logger.debug(f"Removed grouping key '{group_key}' from fields")
 
             # Sort remaining fields for consistent display
             all_fields = sorted(list(all_fields))
+            logger.debug(f"Group table will have {len(all_fields)} columns: {all_fields}")
 
             # Create table header and separator
             header = "| " + " | ".join(all_fields) + " |"
@@ -396,10 +496,17 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
             markdown += header + "\n" + separator + "\n"
 
             # Add rows
-            for record in group_data:
+            for i, record in enumerate(group_data):
+                logger.debug(f"Processing record {i+1}/{len(group_data)} in group {group_value}")
+
                 row_data = []
                 for field in all_fields:
                     value = record.get(field, "")
+
+                    # Log any potential problematic values
+                    if isinstance(value, (list, dict)):
+                        logger.warning(f"Complex value type {type(value).__name__} for field '{field}' in record {i+1} of group {group_value}")
+
                     # Format numbers for better readability
                     if isinstance(value, (int, float)):
                         if isinstance(value, float):
@@ -408,6 +515,7 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
                             str_value = f"{value:,}"
                     else:
                         str_value = str(value)
+
                     # Escape pipes and newlines for markdown
                     str_value = str_value.replace("|", "\\|").replace("\n", " ")
                     row_data.append(str_value)
@@ -417,12 +525,15 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
 
             markdown += "\n"
     else:
+        logger.info(f"No clear grouping field found, using flat table format with {len(data)} records")
+
         # Fall back to standard table for all records
         all_fields = set()
         for record in data:
             all_fields.update(record.keys())
 
         all_fields = sorted(list(all_fields))
+        logger.debug(f"Flat table will have {len(all_fields)} columns")
 
         # Create table header and separator
         header = "| " + " | ".join(all_fields) + " |"
@@ -430,10 +541,13 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
         markdown += header + "\n" + separator + "\n"
 
         # Add rows
-        for record in data:
+        for i, record in enumerate(data):
+            logger.debug(f"Processing record {i+1}/{len(data)}")
+
             row_data = []
             for field in all_fields:
                 value = record.get(field, "")
+
                 # Format numbers for better readability
                 if isinstance(value, (int, float)):
                     if isinstance(value, float):
@@ -442,6 +556,11 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
                         str_value = f"{value:,}"
                 else:
                     str_value = str(value)
+
+                # Check for potentially problematic markdown characters
+                if '|' in str_value or '\n' in str_value:
+                    logger.debug(f"Field '{field}' contains special characters that need escaping")
+
                 # Escape pipes and newlines for markdown
                 str_value = str_value.replace("|", "\\|").replace("\n", " ")
                 row_data.append(str_value)
@@ -452,6 +571,7 @@ def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
     # Add summary information
     markdown += f"\n**Total Aggregation Groups**: {len(data):,}\n"
 
+    logger.info(f"Complex aggregation formatting completed with {len(markdown)} characters")
     return markdown
 
 def convert_vector_results_to_markdown(results: List[Dict[str, Any]], title: str = "Vector Search Results") -> str:

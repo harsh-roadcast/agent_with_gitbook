@@ -46,8 +46,6 @@ class AppConfig:
     elasticsearch: ElasticsearchConfig
     models: ModelConfig
     auth: AuthConfig
-    es_schema: str
-    es_instructions: str
     log_level: str = "INFO"
 
 
@@ -102,23 +100,9 @@ class ConfigManager:
             elasticsearch=elasticsearch_config,
             models=model_config,
             auth=auth_config,
-            es_schema=self._get_es_schema(),
-            es_instructions=os.getenv('ES_INSTRUCTIONS', ''),
             log_level=os.getenv('LOG_LEVEL', 'INFO')
         )
 
-    def _get_es_schema(self) -> str:
-        """Get Elasticsearch schema definition from Redis cache."""
-        from util.redis_client import get_index_schema
-
-        schema_dict = get_index_schema()
-        if schema_dict:
-            formatted_schema = f"INDEX_SCHEMA = {json.dumps(schema_dict, indent=4)}"
-            logger.info("Elasticsearch schema loaded from Redis cache")
-            return formatted_schema
-
-        logger.warning("No schema data found in Redis cache")
-        return "INDEX_SCHEMA = {}"
 
     def update_config(self, **kwargs) -> None:
         """Update configuration values for testing."""

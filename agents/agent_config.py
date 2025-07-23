@@ -646,6 +646,11 @@ def initialize_default_agents():
             "Each query should be self-contained and syntactically correct.",
             "Avoid referencing parent or sibling aggregations using relative paths like '../some_agg'. This is not supported in Elasticsearch.",
 
+            # Device ID filtering rule - IMPORTANT
+            "DO NOT add device_id or device_name filters unless explicitly requested by the user.",
+            "Keep queries generic to apply to all devices by default.",
+            "Only filter by device_id or device_name when the user specifically asks for data about particular devices.",
+
             # Field usage guidance
             "Use the following standard field mappings for metrics:",
             "- `distance` for distance in kilometers.",
@@ -698,6 +703,18 @@ def initialize_default_agents():
                 "fix": "Run the monthly average calculation as a separate query and inject the value as a constant."
             },
             {
+                "field": "device_id",
+                "rule": "no_default_filtering",
+                "reason": "Device ID should not be added as a filter unless explicitly requested by the user",
+                "guidance": "Only include device_id or device_name in filters when the user specifically asks for data about particular devices"
+            },
+            {
+                "field": "device_name",
+                "rule": "no_default_filtering",
+                "reason": "Device name should not be added as a filter unless explicitly requested by the user",
+                "guidance": "Only include device_id or device_name in filters when the user specifically asks for data about particular devices"
+            },
+            {
                 "field": "summary_date",
                 "preferred_agg": "date_histogram",
                 "reason": "`summary_date` is a `date` field and should be aggregated using a date histogram, not a terms aggregation."
@@ -729,7 +746,7 @@ def initialize_default_agents():
                 "reason": "Restrict aggregations and filters to relevant fields only to ensure semantic accuracy."
             }
         ],
-    vector_db="bolt_support_doc",
+        vector_db="bolt_support_doc",
         goal=(
             "Provide accurate and helpful responses to Bolt Delivery SaaS clients for both support and reporting-related queries. "
             "Use the vector database for support documentation, and leverage Elasticsearch schemas to generate meaningful summaries and charts for reporting questions."
