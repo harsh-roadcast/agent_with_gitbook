@@ -37,3 +37,4 @@ staticfiles/
 poetry.lock
 logs/
 .env
+test_llm.py
