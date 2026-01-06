@@ -7,16 +7,28 @@ from dspy.utils.callback import BaseCallback
 
 
 from core.config import config_manager
-import mlflow
+
+# Make MLflow optional
+MLFLOW_ENABLED = os.getenv("MLFLOW_ENABLED", "false").lower() == "true"
+if MLFLOW_ENABLED:
+    try:
+        import mlflow
+    except ImportError:
+        MLFLOW_ENABLED = False
+        mlflow = None
+else:
+    mlflow = None
+
 logger = logging.getLogger(__name__)
 
 
 def init_llm():
     """Initialize the DSPy language model without usage tracking"""
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
-    # Create a unique name for your experiment.
-    mlflow.set_experiment("DSPy-rsdc")
-    mlflow.dspy.autolog(log_traces_from_eval=True)
+    if MLFLOW_ENABLED and mlflow:
+        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
+        # Create a unique name for your experiment.
+        mlflow.set_experiment("DSPy-rsdc")
+        mlflow.dspy.autolog(log_traces_from_eval=True)
 
     api_key = config_manager.config.models.openai_api_key
 
@@ -30,5 +42,6 @@ def init_llm():
 
 def set_mlflow_trace_name(session_id: str, message_id: str):
     """Set the MLflow trace name for the current trace."""
-    mlflow.set_tag("runName", session_id)
-    mlflow.set_tag("source", message_id)
+    if MLFLOW_ENABLED and mlflow:
+        mlflow.set_tag("runName", session_id)
+        mlflow.set_tag("source", message_id)
