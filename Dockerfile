@@ -19,7 +19,11 @@ RUN pip install --no-cache-dir poetry
 # Only install main dependencies, exclude optional groups
 RUN poetry config virtualenvs.create false && \
     poetry install --only main --no-interaction --no-ansi && \
-    poetry cache clear . --all
+    rm -rf ~/.cache/pypoetry ~/.cache/pip /tmp/*
+
+# Clean up build artifacts to reduce image size
+RUN find /usr/local -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    find /usr/local -type f -name "*.pyc" -delete 2>/dev/null || true
 
 # Clean up build artifacts
 RUN find /usr/local -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
