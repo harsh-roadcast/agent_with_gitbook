@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: dspy-agent-api
+    runtime: docker
+    plan: free
+    branch: main
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: OLLAMA_MODEL
+        value: llama3.2
+      - key: LOG_LEVEL
+        value: INFO
+      - key: MLFLOW_ENABLED
+        value: "false"
