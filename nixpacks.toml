@@ -2,11 +2,12 @@
 nixPkgs = ['python312', 'poetry']
 
 [phases.install]
-cmds = ['poetry install --no-dev --no-interaction --no-ansi', 'poetry cache clear . --all']
+cmds = ['poetry install --no-dev --no-interaction --no-ansi', 'poetry cache clear . --all', 'find /opt/venv -type d -name __pycache__ -exec rm -rf {} +', 'find /opt/venv -type f -name "*.pyc" -delete']
 
 [phases.build]
 cmds = ['echo "Build complete"']
 
 [start]
 cmd = 'poetry run uvicorn main:app --host 0.0.0.0 --port $PORT'
+
 

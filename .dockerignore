@@ -3,16 +3,16 @@
 .gitignore
 .gitattributes
 
-# Python
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
-.venv
 pip-log.txt
 pip-delete-this-directory.txt
 .tox/
@@ -27,60 +27,85 @@ coverage.xml
 *.egg-info/
 dist/
 build/
+.eggs/
 
-# IDE
+# IDE & Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
+*.sublime-project
+*.sublime-workspace
 
-# Logs
+# Logs & Debug
 *.log
 logs/
+debug/
+.ipynb_checkpoints/
 
-# Database
+# Database & Cache
 *.db
 *.sqlite
 *.sqlite3
-
-# Cache
 .cache/
 celerybeat-schedule
 *.pyc
+.pytest_cache/
 
-# ML
+# ML & Data
 mlruns/
 .mlflow/
+data/
+*.jsonl
+models/
+trained_models/
+checkpoints/
 
 # Environment
 .env
 .env.local
 .env.*.local
-
-# Tests
-.pytest_cache/
-htmlcov/
-.coverage
+.env.example
 
 # Node (if any)
 node_modules/
 package-lock.json
+yarn.lock
 
-# Documentation
-docs/_build/
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
 
-# Large files to exclude
+# Archives
 *.tar.gz
 *.zip
 *.tar
 *.rar
-models/
-data/*.jsonl
-*.large
 
 # Development
 dev/
 test_data/
-.DS_Store
+tmp/
+temp/
+scratch/
+
+# Documentation builds
+docs/_build/
+site/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Large directories to skip
+.git/
+.github/
+.gitlab-ci/
+.circleci/
+.travis.yml
+
