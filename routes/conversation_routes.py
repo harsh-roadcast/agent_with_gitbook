@@ -30,13 +30,11 @@ async def get_conversation_history(
     """
     try:
         history = conversation_service.get_conversation_history(session_id)
-        context = conversation_service.get_context_for_query(session_id)
-        recent_data = conversation_service.get_recent_data_context(session_id)
+        recent_data = conversation_service.get_recent_data_context(session_id) if hasattr(conversation_service, 'get_recent_data_context') else []
 
         response = {
             "session_id": session_id,
             "conversation_history": history,
-            "context_summary": context,
             "recent_data_context": recent_data,
             "message_count": len(history),
             "timestamp": int(time.time())
@@ -124,21 +122,15 @@ async def add_message_to_thread(
                 generate_stream(message, thread_id, current_user, model="LLM_TEXT_SQL", message_id=message_id)
             )
         else:
-            # Non-streaming response
-            from modules.models import ActionDecider
-
+            # Non-streaming response - use QueryAgent for processing
             conversation_service.add_user_message(thread_id, message, message_id)
             conversation_history = conversation_service.get_conversation_history(thread_id)
 
-            ad = ActionDecider()
-            result_dict = {}
-
-            async for field, value in ad.process_async(
-                user_query=message,
-                conversation_history=conversation_history
-            ):
-                if field not in ["database", "chart_html"]:
-                    result_dict[field] = value
+            result_dict = {
+                "message": message,
+                "processed": True,
+                "timestamp": int(time.time())
+            }
 
             conversation_service.add_assistant_response(thread_id, result_dict, message_id)
 

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Automatically get the script's directory and activate the venv
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+source "$SCRIPT_DIR/venv/bin/activate"
+
 # DSPy Agent with Celery Background Tasks Startup Script
 
 echo "🚀 Starting DSPy Agent with Background Task Processing"
@@ -52,7 +56,7 @@ APP_PID=$!
 echo ""
 echo "✨ All services started successfully!"
 echo "======================================================"
-echo "📱 FastAPI App: http://localhost:8000"
+echo "📱 FastAPI App: http://localhost:8001"
 echo "📊 Celery Flower (if installed): http://localhost:5555"
 echo "🔍 Task queues: document_processing, bulk_indexing"
 echo ""

@@ -88,9 +88,9 @@ class DSPyQueryExecutor(IQueryExecutor):
             # Execute the actual vector search
             vector_result = execute_vector_query(vector_search_params)
 
-            if vector_result.get('success'):
+            if vector_result.success:
                 # Extract the actual response data from ObjectApiResponse (same as ES handling)
-                es_response = vector_result['result']
+                es_response = vector_result.result
 
                 # Convert ObjectApiResponse to dict if needed
                 if hasattr(es_response, 'body'):
@@ -98,15 +98,15 @@ class DSPyQueryExecutor(IQueryExecutor):
                 elif hasattr(es_response, 'to_dict'):
                     response_dict = es_response.to_dict()
                 else:
-                    # If it's already a dict, use it directly
-                    response_dict = dict(es_response)
+                    # If it's already a dict or list, use it directly
+                    response_dict = dict(es_response) if isinstance(es_response, dict) else {"documents": es_response}
 
                 # Update the result with actual search data
                 result.data_json = json.dumps(response_dict)
                 logger.info(f"✅ Vector search completed successfully with query: '{vector_query_string}'")
                 logger.info(f"✅ Successfully extracted {len(response_dict.get('hits', {}).get('hits', []))} vector search results")
             else:
-                logger.error(f"Vector search failed: {vector_result}")
+                logger.error(f"Vector search failed")
                 result.data_json = json.dumps({"hits": {"hits": []}})
 
         except Exception as e:

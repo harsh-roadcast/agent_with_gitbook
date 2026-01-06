@@ -14,7 +14,7 @@ router = APIRouter(tags=["search"])
 @router.post("/v1/search")
 async def search_endpoint(request: Request):
     """
-    LangGraph style search endpoint for querying and retrieving information.
+    Search endpoint for querying and retrieving information.
 
     Args:
         request: HTTP request containing search parameters
@@ -29,6 +29,7 @@ async def search_endpoint(request: Request):
         filters = data.get("filters", {})
         session_id = data.get("session_id", "search_session")
         message_id = data.get("message_id")  # Single message_id from frontend
+        index = data.get("index", "bolt_support_doc")
 
         if not query:
             return JSONResponse(status_code=400, content={"error": "Query parameter is required"})
@@ -41,27 +42,27 @@ async def search_endpoint(request: Request):
 
         # Add to conversation history and get context
         conversation_service.add_user_message(session_id, query, message_id)
-        conversation_history = conversation_service.get_conversation_history(session_id)
 
-        # Use ActionDecider to process the search query
-        ad = ActionDecider()
+        # Perform vector search on the query index
+        from services.search_service import execute_vector_query
         search_results = []
-
-        # Process the search query and collect results
-        async for field, value in ad.process_async(
-            user_query=query,
-            conversation_history=conversation_history
-        ):
-            if field == "data" and value:
-                # Limit the results based on the limit parameter
-                limited_results = value[:limit] if isinstance(value, list) else [value]
-                search_results.extend(limited_results)
-            elif field == "summary":
-                search_results.append({
-                    "type": "summary",
-                    "content": value,
-                    "relevance_score": 0.9
-                })
+        
+        try:
+            # Get search index from filters or use provided index
+            search_index = filters.get("index", index)
+            
+            # Execute vector search
+            vector_result = execute_vector_query({
+                "query_text": query,
+                "index": search_index,
+                "size": limit
+            })
+            
+            if vector_result.success and vector_result.result:
+                search_results = vector_result.result
+        except Exception as e:
+            logger.warning(f"Vector search failed: {e}, returning empty results")
+            search_results = []
 
         response = {
             "query": query,

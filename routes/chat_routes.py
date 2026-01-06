@@ -138,13 +138,16 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
 @router.post("/v1/chat/completions")
 async def chat_completions(request: Request, user_info: Dict[str, Any] = Depends(get_current_user)):
     """OpenAI-compatible chat completion endpoint for streaming and non-streaming."""
+    import uuid
+    
     data = await request.json()
     messages = data.get("messages", [])
 
     user_message = next((msg["content"] for msg in reversed(messages)
                          if msg.get("role") == "user"), None)
 
-    message_id = messages[-1]['message_id']
+    # Get message_id from last message or generate one
+    message_id = messages[-1].get('message_id', str(uuid.uuid4())) if messages else str(uuid.uuid4())
     stream = data.get("stream", False)
     session_id = data.get("session_id", "default")
     model = data.get("model", "general_assistant")  # Default to general_assistant

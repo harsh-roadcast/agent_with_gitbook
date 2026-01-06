@@ -8,7 +8,7 @@ from elasticsearch import Elasticsearch
 from sentence_transformers import SentenceTransformer
 
 # Import the Pydantic models
-from services.models import QueryResult, VectorQueryResult, QueryError
+from services.models import QueryResult, VectorQueryResult
 from util.context import get_authorization_header
 
 logger = logging.getLogger(__name__)
@@ -226,7 +226,7 @@ def generate_embedding(text: str) -> List[float]:
     return embedding
 
 def execute_vector_query(es_query: dict) -> VectorQueryResult:
-    """Execute a simple vector search query."""
+    """Execute vector search query. Falls back to text search for ES 7.x compatibility."""
     logger.info(f"Executing vector search: {es_query}")
     auth_header = get_authorization_header()
     query_text = es_query.get('query_text', '')
@@ -234,44 +234,59 @@ def execute_vector_query(es_query: dict) -> VectorQueryResult:
     size = min(es_query.get('size', 10), 10)
 
     try:
-        # Generate embedding
-        embedding = generate_embedding(query_text)
-        logger.info(f"Generated embedding for: '{query_text[:50]}...'")
+        # Try vector search first (ES 8.x with dense_vector support)
+        try:
+            embedding = generate_embedding(query_text)
+            logger.info(f"Generated embedding for: '{query_text[:50]}...'")
 
-        # Simple vector search query
-        vector_query = {
-            "size": size,
-            "query": {
-                "script_score": {
-                    "query": {"match_all": {}},
-                    "script": {
-                        "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                        "params": {"query_vector": embedding}
+            vector_query = {
+                "size": size,
+                "query": {
+                    "script_score": {
+                        "query": {"match_all": {}},
+                        "script": {
+                            "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                            "params": {"query_vector": embedding}
+                        }
                     }
-                }
-            },
-            "_source": ["filename", "text", "chunk_id"]
-        }
+                },
+                "_source": ["filename", "text", "chunk_id", "title", "content", "module", "section"]
+            }
 
-        result = es_client.search(index=index, body=vector_query, request_timeout=30, headers={'authorization': auth_header} if auth_header else {})
+            result = es_client.search(index=index, body=vector_query, request_timeout=30, headers={'authorization': auth_header} if auth_header else {})
+            logger.info("Vector search using embeddings succeeded")
+            
+        except Exception as vector_err:
+            # Fallback to text search for ES 7.x (no dense_vector support)
+            logger.warning(f"Vector search failed ({vector_err}), falling back to text search")
+            
+            text_query = {
+                "size": size,
+                "query": {
+                    "multi_match": {
+                        "query": query_text,
+                        "fields": ["title^2", "content", "section"]
+                    }
+                },
+                "_source": ["filename", "text", "chunk_id", "title", "content", "module", "section"]
+            }
+            
+            result = es_client.search(index=index, body=text_query, request_timeout=30, headers={'authorization': auth_header} if auth_header else {})
+            logger.info("Fallback to text search succeeded")
 
         # Convert Elasticsearch response to a dictionary if it's not already one
         if hasattr(result, 'body') and callable(getattr(result, 'body', None)):
-            # For Elasticsearch client versions that return a Response object
             result_dict = result.body
         elif hasattr(result, 'to_dict') and callable(getattr(result, 'to_dict', None)):
-            # For Elasticsearch client versions that have to_dict method
             result_dict = result.to_dict()
         else:
-            # Try to convert to dict directly or as fallback use the raw response
             try:
                 result_dict = dict(result)
             except (TypeError, ValueError):
-                # If all conversions fail, use the object as is and let the model handle it
                 result_dict = {"raw_response": str(result)}
 
         total_hits = result_dict.get('hits', {}).get('total', {}).get('value', 0)
-        logger.info(f"Vector search successful - found {total_hits} results")
+        logger.info(f"Vector/text search successful - found {total_hits} results")
 
         # Extract clean documents for markdown generation
         clean_documents = []
@@ -284,14 +299,17 @@ def execute_vector_query(es_query: dict) -> VectorQueryResult:
         # Generate markdown content
         return VectorQueryResult(
             success=True,
-            result=clean_documents,  # Pass clean documents instead of the full result dict
+            result=clean_documents,
             query_type="vector",
         )
     except Exception as e:
         logger.error(f"Error executing vector query: {e}")
-        # Create and raise a proper QueryError
-        error = QueryError(success=False, error=str(e), error_type="vector_query")
-        raise error from e  # Properly chain the exception
+        # Return error result instead of raising (Pydantic model cannot be raised)
+        return VectorQueryResult(
+            success=False,
+            result=[],
+            query_type="vector",
+        )
 
 def convert_json_to_markdown(data, title: str = "Query Results") -> str:
     """Convert JSON query results to markdown formatted table."""

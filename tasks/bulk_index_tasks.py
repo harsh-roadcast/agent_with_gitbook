@@ -269,3 +269,73 @@ def reindex_documents(self, source_index: str, target_index: str,
             meta={"status": "Reindexing failed", "error": str(e)}
         )
         raise
+@celery_app.task(bind=True, name="tasks.bulk_index_tasks.bulk_index_gitbook_async")
+def bulk_index_gitbook_async(self, gitbook_jsonl_path: str, user_id: str = None) -> Dict[str, Any]:
+    """
+    Background task to ingest GitBook documentation, chunk, embed, and bulk index.
+
+    Args:
+        gitbook_jsonl_path: Path to GitBook JSONL export
+        user_id: User ID for tracking
+
+    Returns:
+        Ingestion and indexing results
+    """
+    try:
+        from data_processor.gitbook_ingester import ingest_gitbook
+        
+        current_task.update_state(
+            state="PROGRESS",
+            meta={"status": "Starting GitBook ingestion", "progress": 0}
+        )
+
+        logger.info(f"Starting GitBook ingestion from {gitbook_jsonl_path}")
+
+        # Ingest and process documents
+        current_task.update_state(
+            state="PROGRESS",
+            meta={"status": "Parsing and chunking GitBook documents", "progress": 10}
+        )
+        
+        documents = ingest_gitbook(gitbook_jsonl_path)
+        
+        if not documents:
+            raise ValueError(f"No documents found in {gitbook_jsonl_path}")
+
+        current_task.update_state(
+            state="PROGRESS",
+            meta={"status": f"Bulk indexing {len(documents)} document chunks", "progress": 50}
+        )
+
+        # Bulk index documents
+        result = bulk_index_documents("gitbook_docs", documents, max_docs=10000)
+
+        final_result = {
+            "status": "completed",
+            "index_name": "gitbook_docs",
+            "total_documents": len(documents),
+            "indexed_count": result.get("indexed_count", 0),
+            "failed_count": result.get("failed_count", 0),
+            "source": "gitbook"
+        }
+
+        # Cache result for user
+        if user_id:
+            result_key = f"gitbook_index_result:{user_id}"
+            redis_client.setex(result_key, 3600, str(final_result))
+
+        current_task.update_state(
+            state="SUCCESS",
+            meta={"status": "GitBook ingestion completed", "progress": 100, "result": final_result}
+        )
+
+        logger.info(f"GitBook ingestion completed: {result.get('indexed_count', 0)} indexed, {result.get('failed_count', 0)} failed")
+        return final_result
+
+    except Exception as e:
+        logger.error(f"Error in GitBook ingestion: {e}", exc_info=True)
+        current_task.update_state(
+            state="FAILURE",
+            meta={"status": "GitBook ingestion failed", "error": str(e)}
+        )
+        raise

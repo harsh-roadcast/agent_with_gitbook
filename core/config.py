@@ -8,7 +8,7 @@ from typing import Optional
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +76,9 @@ class ConfigManager:
     def _load_config(self) -> AppConfig:
         """Load configuration from environment variables."""
         elasticsearch_config = ElasticsearchConfig(
-            host=os.getenv('ES_HOST', 'https://62.72.41.235:9200'),
+            host=os.getenv('ES_HOST', 'https://127.0.0.1:9200'),
             username=os.getenv('ES_USERNAME', 'elastic'),
-            password=os.getenv('ES_PASSWORD', 'GGgCYcnpA_0R_fT5TfFY'),
+            password=os.getenv('ES_PASSWORD', ''),
             verify_certs=os.getenv('ES_VERIFY_CERTS', 'False').lower() == 'true',
             request_timeout=int(os.getenv('ES_REQUEST_TIMEOUT', '30'))
         )

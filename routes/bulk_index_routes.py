@@ -61,17 +61,51 @@ async def get_bulk_index_status(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Get status of bulk indexing task."""
-    from celery_app import celery_app
+    try:
+        from celery_app import celery_app
 
-    task = celery_app.AsyncResult(task_id)
+        task = celery_app.AsyncResult(task_id)
+        
+        # Extract actual result from meta dict if available
+        actual_result = None
+        if task.state == "SUCCESS" and isinstance(task.result, dict):
+            # Result is nested in meta['result'] due to update_state()
+            actual_result = task.result.get('result', task.result)
 
+        return {
+            "task_id": task_id,
+            "status": task.state.lower(),
+            "progress": task.info.get("progress", 0) if task.state == "PROGRESS" else (100 if task.state == "SUCCESS" else 0),
+            "message": task.info.get("status", f"Task is {task.state.lower()}") if hasattr(task, 'info') and isinstance(task.info, dict) else f"Task is {task.state.lower()}",
+            "result": actual_result,
+            "error": str(task.result) if task.state == "FAILURE" else None
+        }
+    except Exception as e:
+        logger.error(f"Failed to get task status for {task_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
+
+
+@router.post("/bulk-index/gitbook")
+async def bulk_index_gitbook_endpoint(
+    request_data: dict,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Ingest GitBook documentation, chunk, embed, and bulk index to Elasticsearch."""
+    from tasks.bulk_index_tasks import bulk_index_gitbook_async
+    
+    gitbook_jsonl_path = request_data.get("gitbook_jsonl_path", "")
+    logger.info(f"User {current_user.get('username')} requesting GitBook ingestion from {gitbook_jsonl_path}")
+    
+    # Submit to background processing
+    task = bulk_index_gitbook_async.delay(
+        gitbook_jsonl_path,
+        current_user.get('user_id')
+    )
+    
     return {
-        "task_id": task_id,
-        "status": task.state.lower(),
-        "progress": task.info.get("progress", 0) if task.state == "PROGRESS" else (100 if task.state == "SUCCESS" else 0),
-        "message": task.info.get("status", f"Task is {task.state.lower()}") if hasattr(task, 'info') else f"Task is {task.state.lower()}",
-        "result": task.result if task.state == "SUCCESS" else None,
-        "error": str(task.result) if task.state == "FAILURE" else None
+        "message": "GitBook ingestion task submitted for background processing",
+        "task_id": task.id,
+        "gitbook_path": gitbook_jsonl_path
     }
 
 
@@ -100,6 +134,9 @@ async def delete_index(
             "index_name": index_name
         }
 
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code
+        raise
     except Exception as e:
         logger.error(f"Failed to delete index '{index_name}': {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete index: {str(e)}")

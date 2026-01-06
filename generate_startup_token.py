@@ -1,0 +1,3 @@
+from services.auth_service import generate_startup_token
+
+generate_startup_token()

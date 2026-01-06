@@ -346,6 +346,48 @@ class QueryAgent(dspy.Module):
             logger.error(f"Chart generation failed: {chart_error}")
             yield self._create_debug_message("chart_error", {"error": str(chart_error)})
 
+    def _retrieve_gitbook_context(self, query: str, top_k: int = 3) -> str:
+        """
+        Retrieve relevant GitBook documentation for the query.
+        
+        Args:
+            query: User query to search documentation
+            top_k: Number of top results to retrieve
+        
+        Returns:
+            Formatted documentation context string
+        """
+        try:
+            from services.search_service import execute_vector_query
+            
+            # Vector search on GitBook docs
+            es_query = {
+                'query_text': query,
+                'index': 'gitbook_docs',
+                'size': top_k
+            }
+            
+            result = execute_vector_query(es_query)
+            
+            if not result.success or not result.result:
+                logger.debug("No GitBook documentation found for query")
+                return ""
+            
+            # Format documents into context
+            context_lines = ["📚 Relevant Documentation:"]
+            for i, doc in enumerate(result.result, 1):
+                title = doc.get('title', 'Untitled')
+                module = doc.get('module', 'general')
+                content = doc.get('content', '')[:200] + "..."
+                context_lines.append(f"\n{i}. [{title}] (Module: {module})")
+                context_lines.append(f"   {content}")
+            
+            return "\n".join(context_lines)
+        
+        except Exception as e:
+            logger.warning(f"Error retrieving GitBook context: {e}")
+            return ""
+
     async def process_query_async(self, request: QueryRequest, session_id=None, message_id=None, test_mode=False):
         """Process query using the redesigned workflow with structured JSON output."""
         try:
@@ -371,6 +413,17 @@ class QueryAgent(dspy.Module):
             parsed_history = self._parse_history(request.conversation_history)
             self.signature_outputs = {}  # Reset storage
 
+            # Step 0: Retrieve GitBook documentation context
+            gitbook_context = self._retrieve_gitbook_context(request.user_query, top_k=3)
+            if gitbook_context:
+                logger.info("Retrieved GitBook documentation context")
+                yield "message", {
+                    "type": "gitbook_context",
+                    "content": gitbook_context,
+                    "render_type": "text",
+                    "timestamp": time.time()
+                }
+
             # Step 1: ThinkingSignature
             yield "message", {
                 "type": "debug",
@@ -383,8 +436,13 @@ class QueryAgent(dspy.Module):
             }
 
             try:
+                # Enhance system prompt with GitBook context if available
+                enhanced_system_prompt = request.system_prompt
+                if gitbook_context:
+                    enhanced_system_prompt = f"{request.system_prompt}\n\n{gitbook_context}"
+                
                 thinking_result = self.thinking(
-                    system_prompt=request.system_prompt,
+                    system_prompt=enhanced_system_prompt,
                     user_query=request.user_query,
                     conversation_history=parsed_history,
                     goal=request.goal,
@@ -490,6 +548,12 @@ class QueryAgent(dspy.Module):
                     workflow_steps = ["VectorQueryProcessor"]
                 logger.info(f"Running in test mode: workflow overridden to only use {workflow_steps[0]}")
 
+            # If we have gitbook_context but no SummarySignature in workflow, add it
+            if gitbook_context and "SummarySignature" not in workflow_steps:
+                workflow_steps.append("SummarySignature")
+                logger.info("Added SummarySignature to workflow because gitbook_context is available")
+
+
             # Step 3: Execute workflow steps dynamically
             query_results = []  # Changed to handle multiple results
             has_data = False
@@ -528,11 +592,12 @@ class QueryAgent(dspy.Module):
                             yield result
 
                 elif step == "SummarySignature":
-                    if has_data:
+                    # Generate summary if we have query data OR gitbook context
+                    if has_data or gitbook_context:
                         async for result in self._execute_summary_signature(request, detailed_query, query_results):
                             yield result
                     else:
-                        logger.info("Skipping summary generation because query returned no data")
+                        logger.info("Skipping summary generation because query returned no data and no gitbook context")
                         yield "message", {
                             "type": "debug",
                             "content": {
