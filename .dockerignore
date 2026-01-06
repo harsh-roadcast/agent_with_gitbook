@@ -58,10 +58,29 @@ celerybeat-schedule
 mlruns/
 .mlflow/
 data/
+gitbook_docs/
 *.jsonl
 models/
 trained_models/
 checkpoints/
+
+# Tests & Development
+tests/
+test_*.py
+*_test.py
+gitbook-chatbot-widget/
+data_processor/
+*.md
+CHANGELOG.md
+README.md
+QUICK_START.md
+GITBOOK_INTEGRATION.md
+CORS_SETUP.md
+PRODUCTION_DEPLOY.md
+RAILWAY_DEPLOY.md
+POETRY_RAILWAY.md
+VISUAL_PREVIEW.md
+PROJECT_SUMMARY.md
 
 # Environment
 .env
