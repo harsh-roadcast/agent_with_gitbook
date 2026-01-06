@@ -1,0 +1,86 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache
+.cache/
+celerybeat-schedule
+*.pyc
+
+# ML
+mlruns/
+.mlflow/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Tests
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Node (if any)
+node_modules/
+package-lock.json
+
+# Documentation
+docs/_build/
+
+# Large files to exclude
+*.tar.gz
+*.zip
+*.tar
+*.rar
+models/
+data/*.jsonl
+*.large
+
+# Development
+dev/
+test_data/
+.DS_Store
