@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitBook Chatbot Widget - Demo</title>
+  <link rel="stylesheet" href="chatbot-widget.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .demo-container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 16px;
+    }
+
+    .demo-section {
+      margin-bottom: 30px;
+    }
+
+    .demo-section h2 {
+      color: #0066cc;
+      font-size: 20px;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    .demo-section p {
+      color: #555;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .demo-section ul {
+      margin-left: 20px;
+      color: #555;
+    }
+
+    .demo-section li {
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+
+    .code-block {
+      background: #f5f5f5;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 15px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      margin: 15px 0;
+    }
+
+    .info-box {
+      background: #e8f4fd;
+      border-left: 4px solid #0066cc;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 15px 0;
+    }
+
+    .info-box p {
+      margin: 0;
+      color: #333;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .feature-card {
+      background: #f9f9f9;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+    }
+
+    .feature-card h3 {
+      color: #0066cc;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      color: #666;
+      font-size: 14px;
+      margin: 0;
+    }
+
+    .cta-button {
+      display: inline-block;
+      background: #0066cc;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: all 0.3s;
+      margin-top: 10px;
+    }
+
+    .cta-button:hover {
+      background: #0052a3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+    }
+
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: #e8f4fd;
+      border-radius: 20px;
+      font-size: 14px;
+      color: #0066cc;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: #00cc66;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <h1>🤖 GitBook Chatbot Widget</h1>
+    <p class="subtitle">A lightweight, embeddable AI assistant for your documentation</p>
+
+    <div class="info-box">
+      <p><strong>👉 Look at the bottom-right corner!</strong> Click the chat button to try the widget.</p>
+    </div>
+
+    <div class="demo-section">
+      <h2>Features</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <h3>🎨 Customizable</h3>
+          <p>Match your brand colors and style</p>
+        </div>
+        <div class="feature-card">
+          <h3>⚡ Fast Search</h3>
+          <p>Vector-powered semantic search</p>
+        </div>
+        <div class="feature-card">
+          <h3>📱 Responsive</h3>
+          <p>Works on all devices</p>
+        </div>
+        <div class="feature-card">
+          <h3>🔌 Easy Integration</h3>
+          <p>Just copy & paste</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Quick Start</h2>
+      <p>Add this code to your GitBook custom scripts section:</p>
+      <div class="code-block">&lt;script src="config.js"&gt;&lt;/script&gt;
+&lt;script src="chatbot-widget.js"&gt;&lt;/script&gt;
+&lt;link rel="stylesheet" href="chatbot-widget.css"&gt;</div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Try It Out</h2>
+      <p>Click the chat button in the bottom-right corner and try asking:</p>
+      <ul>
+        <li>"How do I configure authentication?"</li>
+        <li>"Tell me about fleet management"</li>
+        <li>"What is yard management?"</li>
+        <li>"How do I track vehicles?"</li>
+      </ul>
+    </div>
+
+    <div class="demo-section">
+      <h2>Configuration</h2>
+      <p>Customize the widget by editing <code>config.js</code>:</p>
+      <div class="code-block">const CHATBOT_CONFIG = {
+  apiEndpoint: 'https://your-api.com/v1/search',
+  primaryColor: '#0066cc',
+  position: 'bottom-right',
+  title: 'Documentation Assistant',
+  maxResults: 5,
+  autoOpen: false
+};</div>
+    </div>
+
+    <div class="demo-section">
+      <h2>API Status</h2>
+      <div class="status-indicator">
+        <span class="status-dot"></span>
+        <span>Backend: http://localhost:8001</span>
+      </div>
+      <p style="margin-top: 10px; font-size: 14px; color: #666;">
+        Make sure your FastAPI server is running on port 8001 with CORS enabled.
+      </p>
+    </div>
+
+    <div class="demo-section">
+      <h2>Documentation</h2>
+      <p>For complete setup instructions and API documentation, see the README.md file.</p>
+      <a href="README.md" class="cta-button">View Documentation</a>
+    </div>
+  </div>
+
+  <!-- Load the chatbot widget -->
+  <script src="config.js"></script>
+  <script src="chatbot-widget.js"></script>
+</body>
+</html>

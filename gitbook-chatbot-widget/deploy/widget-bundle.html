@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<!-- 
+  GitBook Chatbot Widget - All-in-One Bundle
+  
+  Copy this entire file content and paste it into:
+  GitBook Settings > Customize > Custom Code > Body section
+  
+  Or copy just the script and style tags if you prefer.
+-->
+<html>
+<head>
+<style>
+/* Chatbot Widget Styles - Inline */
+:root{--chatbot-primary:#0066cc;--chatbot-secondary:#f5f5f5;--chatbot-text:#333;--chatbot-border:#e0e0e0;--chatbot-shadow:rgba(0,0,0,.1);--chatbot-user-msg:#0066cc;--chatbot-bot-msg:#e8f4fd;--chatbot-white:#fff;--chatbot-transition:all .3s cubic-bezier(.4,0,.2,1)}#gitbook-chatbot-widget{position:fixed;z-index:9999;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5}#gitbook-chatbot-widget.position-bottom-right{bottom:20px;right:20px}#gitbook-chatbot-widget.position-bottom-left{bottom:20px;left:20px}.chatbot-toggle-button{width:60px;height:60px;border-radius:50%;background:var(--chatbot-primary);color:var(--chatbot-white);border:none;cursor:pointer;box-shadow:0 4px 12px var(--chatbot-shadow);display:flex;align-items:center;justify-content:center;transition:var(--chatbot-transition);position:relative}.chatbot-toggle-button:hover{transform:scale(1.05);box-shadow:0 6px 16px var(--chatbot-shadow)}.chatbot-toggle-button svg{width:28px;height:28px;fill:var(--chatbot-white)}.chatbot-unread-badge{position:absolute;top:-2px;right:-2px;background:#f44;color:#fff;border-radius:50%;width:20px;height:20px;display:none;align-items:center;justify-content:center;font-size:11px;font-weight:700}.chatbot-unread-badge.show{display:flex}.chatbot-window{position:absolute;bottom:75px;right:0;width:380px;max-width:calc(100vw - 40px);height:550px;max-height:calc(100vh - 100px);background:var(--chatbot-white);border-radius:16px;box-shadow:0 8px 32px var(--chatbot-shadow);display:none;flex-direction:column;overflow:hidden;transition:var(--chatbot-transition)}.chatbot-window.open{display:flex;animation:slideUp .3s ease-out}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}.chatbot-header{background:var(--chatbot-primary);color:var(--chatbot-white);padding:16px 20px;display:flex;justify-content:space-between;align-items:center}.chatbot-header-content h3{margin:0;font-size:16px;font-weight:600}.chatbot-header-content p{margin:4px 0 0;font-size:12px;opacity:.9}.chatbot-close-button{background:0 0;border:none;color:var(--chatbot-white);cursor:pointer;padding:4px;display:flex;align-items:center;justify-content:center;transition:var(--chatbot-transition);border-radius:4px}.chatbot-close-button:hover{background:rgba(255,255,255,.1)}.chatbot-close-button svg{width:20px;height:20px;fill:currentColor}.chatbot-messages{flex:1;overflow-y:auto;padding:20px;background:#fafafa;display:flex;flex-direction:column;gap:16px}.chatbot-messages::-webkit-scrollbar{width:6px}.chatbot-messages::-webkit-scrollbar-track{background:0 0}.chatbot-messages::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px}.chatbot-messages::-webkit-scrollbar-thumb:hover{background:#ccc}.chatbot-message{display:flex;gap:8px;animation:fadeIn .3s ease-out}@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.chatbot-message.user{flex-direction:row-reverse}.chatbot-message-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px}.chatbot-message.bot .chatbot-message-avatar{background:var(--chatbot-primary);color:var(--chatbot-white)}.chatbot-message.user .chatbot-message-avatar{background:var(--chatbot-user-msg);color:var(--chatbot-white)}.chatbot-message-content{max-width:75%;display:flex;flex-direction:column;gap:4px}.chatbot-message-bubble{padding:12px 16px;border-radius:12px;word-wrap:break-word}.chatbot-message.bot .chatbot-message-bubble{background:var(--chatbot-white);border:1px solid var(--chatbot-border);border-bottom-left-radius:4px}.chatbot-message.user .chatbot-message-bubble{background:var(--chatbot-user-msg);color:var(--chatbot-white);border-bottom-right-radius:4px}.chatbot-message-time{font-size:11px;color:#999;padding:0 4px}.chatbot-results{margin-top:8px;display:flex;flex-direction:column;gap:8px}.chatbot-result-item{background:var(--chatbot-white);border:1px solid var(--chatbot-border);border-radius:8px;padding:12px;cursor:pointer;transition:var(--chatbot-transition)}.chatbot-result-item:hover{border-color:var(--chatbot-primary);box-shadow:0 2px 8px var(--chatbot-shadow)}.chatbot-result-title{font-weight:600;color:var(--chatbot-primary);margin-bottom:4px;font-size:13px}.chatbot-result-content{color:var(--chatbot-text);font-size:12px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.chatbot-result-meta{margin-top:6px;font-size:11px;color:#999}.chatbot-typing{display:flex;gap:4px;padding:8px 0}.chatbot-typing-dot{width:6px;height:6px;border-radius:50%;background:var(--chatbot-primary);animation:typing 1.4s infinite}.chatbot-typing-dot:nth-child(2){animation-delay:.2s}.chatbot-typing-dot:nth-child(3){animation-delay:.4s}@keyframes typing{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}.chatbot-input-container{padding:16px 20px;background:var(--chatbot-white);border-top:1px solid var(--chatbot-border);display:flex;gap:8px}.chatbot-input{flex:1;border:1px solid var(--chatbot-border);border-radius:24px;padding:10px 16px;font-size:14px;outline:0;transition:var(--chatbot-transition);font-family:inherit}.chatbot-input:focus{border-color:var(--chatbot-primary);box-shadow:0 0 0 3px rgba(0,102,204,.1)}.chatbot-send-button{background:var(--chatbot-primary);color:var(--chatbot-white);border:none;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:var(--chatbot-transition);flex-shrink:0}.chatbot-send-button:hover:not(:disabled){background:#0052a3;transform:scale(1.05)}.chatbot-send-button:disabled{opacity:.5;cursor:not-allowed}.chatbot-send-button svg{width:18px;height:18px;fill:currentColor}@media (max-width:480px){.chatbot-window{width:calc(100vw - 20px);height:calc(100vh - 90px);bottom:70px;right:10px}#gitbook-chatbot-widget.position-bottom-left .chatbot-window,#gitbook-chatbot-widget.position-bottom-right .chatbot-window{left:10px;right:10px}}
+</style>
+</head>
+<body>
+
+<script>
+// GitBook Chatbot Widget - All-in-One
+(function(){'use strict';const config={apiEndpoint:'http://localhost:8001/v1/search',primaryColor:'#0066cc',position:'bottom-right',title:'Documentation Assistant',subtitle:'Ask me anything about the docs',placeholder:'Type your question...',welcomeMessage:'Hi! I can help you find information in the documentation. What would you like to know?',maxResults:5,autoOpen:!1,sessionStorageKey:'gitbook_chatbot_session'};class GitBookChatbot{constructor(){this.isOpen=!1;this.messages=[];this.sessionId=this.getOrCreateSession();this.messageCounter=0;this.init()}init(){this.createWidget();this.attachEventListeners();this.addBotMessage(config.welcomeMessage);config.autoOpen&&setTimeout(()=>this.toggleChat(),500)}getOrCreateSession(){let sessionId=sessionStorage.getItem(config.sessionStorageKey);if(!sessionId){sessionId='session_'+Date.now()+'_'+Math.random().toString(36).substr(2,9);sessionStorage.setItem(config.sessionStorageKey,sessionId)}return sessionId}createWidget(){const widgetHTML=`
+        <div id="gitbook-chatbot-widget" class="position-${config.position}">
+          <button class="chatbot-toggle-button" aria-label="Toggle chat">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+            </svg>
+            <span class="chatbot-unread-badge">1</span>
+          </button>
+          <div class="chatbot-window">
+            <div class="chatbot-header">
+              <div class="chatbot-header-content">
+                <h3>${config.title}</h3>
+                <p>${config.subtitle}</p>
+              </div>
+              <button class="chatbot-close-button" aria-label="Close chat">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+              </button>
+            </div>
+            <div class="chatbot-messages" id="chatbot-messages"></div>
+            <div class="chatbot-input-container">
+              <input type="text" class="chatbot-input" id="chatbot-input" placeholder="${config.placeholder}" aria-label="Message input"/>
+              <button class="chatbot-send-button" id="chatbot-send-button" aria-label="Send message">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>`;document.body.insertAdjacentHTML('beforeend',widgetHTML)}attachEventListeners(){const toggleBtn=document.querySelector('.chatbot-toggle-button');const closeBtn=document.querySelector('.chatbot-close-button');const sendBtn=document.getElementById('chatbot-send-button');const input=document.getElementById('chatbot-input');toggleBtn.addEventListener('click',()=>this.toggleChat());closeBtn.addEventListener('click',()=>this.toggleChat());sendBtn.addEventListener('click',()=>this.sendMessage());input.addEventListener('keypress',(e)=>{if(e.key==='Enter'){this.sendMessage()}})}toggleChat(){this.isOpen=!this.isOpen;const chatWindow=document.querySelector('.chatbot-window');if(this.isOpen){chatWindow.classList.add('open');document.getElementById('chatbot-input').focus();this.hideUnreadBadge()}else{chatWindow.classList.remove('open')}}showUnreadBadge(){const badge=document.querySelector('.chatbot-unread-badge');badge.classList.add('show')}hideUnreadBadge(){const badge=document.querySelector('.chatbot-unread-badge');badge.classList.remove('show')}async sendMessage(){const input=document.getElementById('chatbot-input');const message=input.value.trim();if(!message)return;input.value='';this.addUserMessage(message);this.showTypingIndicator();try{const messageId=`msg_${Date.now()}_${this.messageCounter++}`;const response=await this.callSearchAPI(message,messageId);this.hideTypingIndicator();if(response.results&&response.results.length>0){this.addBotMessageWithResults(response)}else{this.addBotMessage("I couldn't find any relevant information. Could you try rephrasing your question?")}}catch(error){this.hideTypingIndicator();this.addBotMessage("Sorry, I encountered an error. Please try again later.");console.error('Chatbot API error:',error)}}async callSearchAPI(query,messageId){const response=await fetch(config.apiEndpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:query,message_id:messageId,session_id:this.sessionId,limit:config.maxResults})});if(!response.ok){throw new Error(`API error: ${response.status}`)}return await response.json()}addUserMessage(text){const message={type:'user',text:text,timestamp:new Date()};this.messages.push(message);this.renderMessage(message)}addBotMessage(text){const message={type:'bot',text:text,timestamp:new Date()};this.messages.push(message);this.renderMessage(message);if(!this.isOpen){this.showUnreadBadge()}}addBotMessageWithResults(response){const message={type:'bot',text:`I found ${response.total} relevant ${response.total===1?'result':'results'}:`,results:response.results,timestamp:new Date()};this.messages.push(message);this.renderMessage(message);if(!this.isOpen){this.showUnreadBadge()}}renderMessage(message){const messagesContainer=document.getElementById('chatbot-messages');const messageHTML=this.createMessageHTML(message);messagesContainer.insertAdjacentHTML('beforeend',messageHTML);messagesContainer.scrollTop=messagesContainer.scrollHeight}createMessageHTML(message){const time=this.formatTime(message.timestamp);const avatarIcon=message.type==='bot'?'🤖':'👤';let resultsHTML='';if(message.results&&message.results.length>0){resultsHTML='<div class="chatbot-results">';message.results.forEach((result,index)=>{const title=result.title||'Documentation';const content=result.content||result.text||'';const module=result.module||'';const section=result.section||'';resultsHTML+=`<div class="chatbot-result-item">
+              <div class="chatbot-result-title">${this.escapeHtml(title)}</div>
+              <div class="chatbot-result-content">${this.escapeHtml(content.substring(0,200))}${content.length>200?'...':''}</div>
+              ${module||section?`<div class="chatbot-result-meta">${[module,section].filter(Boolean).join(' › ')}</div>`:''}
+            </div>`});resultsHTML+='</div>'}return `<div class="chatbot-message ${message.type}">
+          <div class="chatbot-message-avatar">${avatarIcon}</div>
+          <div class="chatbot-message-content">
+            <div class="chatbot-message-bubble">${this.escapeHtml(message.text)}${resultsHTML}</div>
+            <div class="chatbot-message-time">${time}</div>
+          </div>
+        </div>`}showTypingIndicator(){const messagesContainer=document.getElementById('chatbot-messages');const typingHTML=`<div class="chatbot-message bot" id="typing-indicator">
+          <div class="chatbot-message-avatar">🤖</div>
+          <div class="chatbot-message-content">
+            <div class="chatbot-message-bubble">
+              <div class="chatbot-typing">
+                <div class="chatbot-typing-dot"></div>
+                <div class="chatbot-typing-dot"></div>
+                <div class="chatbot-typing-dot"></div>
+              </div>
+            </div>
+          </div>
+        </div>`;messagesContainer.insertAdjacentHTML('beforeend',typingHTML);messagesContainer.scrollTop=messagesContainer.scrollHeight}hideTypingIndicator(){const indicator=document.getElementById('typing-indicator');if(indicator){indicator.remove()}}formatTime(date){return date.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}escapeHtml(text){const div=document.createElement('div');div.textContent=text;return div.innerHTML}}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',()=>{window.gitbookChatbot=new GitBookChatbot()})}else{window.gitbookChatbot=new GitBookChatbot()}})();
+</script>
+
+</body>
+</html>

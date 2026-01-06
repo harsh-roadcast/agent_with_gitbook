@@ -1,0 +1,35 @@
+{
+  "name": "gitbook-chatbot-widget",
+  "version": "1.0.0",
+  "description": "Embeddable chatbot widget for GitBook documentation",
+  "main": "chatbot-widget.js",
+  "scripts": {
+    "serve": "python -m http.server 8080",
+    "test": "echo 'Open http://localhost:8080/demo.html in your browser'",
+    "minify": "echo 'Install terser: npm install -g terser' && terser chatbot-widget.js -o chatbot-widget.min.js -c -m",
+    "deploy": "echo 'Deploy files to your CDN or static hosting service'"
+  },
+  "keywords": [
+    "chatbot",
+    "gitbook",
+    "widget",
+    "documentation",
+    "ai",
+    "search"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "files": [
+    "chatbot-widget.js",
+    "chatbot-widget.css",
+    "config.js",
+    "demo.html",
+    "README.md",
+    "GITBOOK_INTEGRATION.md",
+    "CORS_SETUP.md"
+  ]
+}
