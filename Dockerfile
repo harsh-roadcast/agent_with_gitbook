@@ -16,6 +16,7 @@ COPY pyproject.toml poetry.lock ./
 RUN pip install --no-cache-dir poetry
 
 # Install dependencies to system Python (no venv in Docker)
+# Only install main dependencies, exclude optional groups
 RUN poetry config virtualenvs.create false && \
     poetry install --only main --no-interaction --no-ansi && \
     poetry cache clear . --all
