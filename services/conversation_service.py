@@ -16,12 +16,31 @@ class ConversationService:
         self._max_history_length = 10
         self._session_timeout = timedelta(hours=2)
         self._redis_prefix = "conversation:"
-        logger.info("ConversationService initialized with global Redis client")
+        self._redis_enabled = redis_client is not None
+        self._in_memory_store: Dict[str, Dict[str, Any]] = {}
+        backend = "Redis" if self._redis_enabled else "in-memory fallback"
+        logger.info(f"ConversationService initialized using {backend} backend")
+
+    def _get_store_key(self, session_id: str) -> str:
+        return f"{self._redis_prefix}{session_id}"
+
+    def _get_conversation_data(self, session_id: str) -> Dict[str, Any]:
+        if self._redis_enabled:
+            redis_key = self._get_store_key(session_id)
+            return redis_client.hgetall(redis_key)
+        return self._in_memory_store.get(session_id, {}).copy()
+
+    def _persist_conversation_data(self, session_id: str, data: Dict[str, Any]) -> None:
+        if self._redis_enabled:
+            redis_key = self._get_store_key(session_id)
+            redis_client.hset(redis_key, mapping=data)
+            redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
+        else:
+            self._in_memory_store[session_id] = data.copy()
 
     def get_conversation_history(self, session_id: str) -> List[Dict[str, Any]]:
         """Get conversation history for a session."""
-        redis_key = f"{self._redis_prefix}{session_id}"
-        conversation_data = redis_client.hgetall(redis_key)
+        conversation_data = self._get_conversation_data(session_id)
 
         if not conversation_data:
             return []
@@ -43,8 +62,7 @@ class ConversationService:
 
     def add_user_message(self, session_id: str, message: str, message_id: str) -> str:
         """Add a user message to conversation history."""
-        redis_key = f"{self._redis_prefix}{session_id}"
-        conversation_data = redis_client.hgetall(redis_key)
+        conversation_data = self._get_conversation_data(session_id)
 
         if not conversation_data:
             messages = []
@@ -75,9 +93,7 @@ class ConversationService:
             'created_at': created_at,
             'last_activity': datetime.now().isoformat()
         }
-
-        redis_client.hset(redis_key, mapping=update_data)
-        redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
+        self._persist_conversation_data(session_id, update_data)
 
         logger.debug(f"Added user message to conversation {session_id} with message_id {message_id}")
         return message_id
@@ -85,8 +101,7 @@ class ConversationService:
     def add_assistant_response(self, session_id: str, response: Any, message_id: str,
                               es_query: Dict = None, user_message_id: str = None) -> str:
         """Add an assistant response to conversation history with filtered data."""
-        redis_key = f"{self._redis_prefix}{session_id}"
-        conversation_data = redis_client.hgetall(redis_key)
+        conversation_data = self._get_conversation_data(session_id)
 
         if not conversation_data:
             messages = []
@@ -138,9 +153,7 @@ class ConversationService:
             'created_at': created_at,
             'last_activity': datetime.now().isoformat()
         }
-
-        redis_client.hset(redis_key, mapping=update_data)
-        redis_client.expire(redis_key, int(self._session_timeout.total_seconds()))
+        self._persist_conversation_data(session_id, update_data)
 
         # Store ES query if provided (separate from conversation history)
         if es_query and user_message_id:
@@ -160,10 +173,15 @@ class ConversationService:
 
     def clear_conversation(self, session_id: str) -> bool:
         """Clear conversation history for a session."""
-        redis_key = f"{self._redis_prefix}{session_id}"
-        deleted = redis_client.delete(redis_key)
-        logger.info(f"Cleared conversation for session {session_id}")
-        return deleted > 0
+        if self._redis_enabled:
+            redis_key = self._get_store_key(session_id)
+            deleted = redis_client.delete(redis_key)
+            logger.info(f"Cleared conversation for session {session_id}")
+            return deleted > 0
+        removed = self._in_memory_store.pop(session_id, None) is not None
+        if removed:
+            logger.info(f"Cleared in-memory conversation for session {session_id}")
+        return removed
 
     def get_recent_context(self, session_id: str, max_exchanges: int = 3) -> str:
         """Get recent conversation context as formatted string."""
