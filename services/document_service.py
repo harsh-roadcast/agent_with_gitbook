@@ -4,13 +4,9 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any
 
-import torch
-
-torch.set_default_device("cpu")
-
 import dspy
 from docling.document_converter import DocumentConverter
-from services.search_service import get_es_client, get_sentence_transformer_model
+from services.search_service import get_es_client, generate_embedding
 from modules.signatures import DocumentMetadataExtractor
 
 logger = logging.getLogger(__name__)
@@ -20,7 +16,6 @@ class DocumentProcessor:
 
     def __init__(self):
         self.es_client = get_es_client()
-        self.embedding_model = get_sentence_transformer_model()
         self.index_name = "docling_documents"
         self.docling_converter = DocumentConverter()
         self.metadata_extractor = dspy.ChainOfThought(DocumentMetadataExtractor)
@@ -67,7 +62,7 @@ class DocumentProcessor:
 
     def create_embedding(self, text: str) -> List[float]:
         """Create embedding for text."""
-        return self.embedding_model.encode(text, convert_to_tensor=False).tolist()
+        return generate_embedding(text)
 
     def process_pdf_file(self, file_path: str, filename: str, index_name: str = None) -> Dict[str, Any]:
         """Process PDF file - simplified version."""

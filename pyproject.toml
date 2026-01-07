@@ -18,7 +18,6 @@ requests = "^2.32.0"
 # AI/ML dependencies
 dspy = "^2.6.27"
 openai = "^1.93.0"
-sentence-transformers = "^4.1.0"
 
 # Database dependencies
 elasticsearch = "^9.0.2"
@@ -36,6 +35,10 @@ celery = "^5.5.3"
 # Document processing (optional - only if using document upload features)
 docling = "^2.39.0"
 docling-core = "^2.39.0"
+
+[tool.poetry.group.ingest.dependencies]
+# Offline ingestion utilities (optional)
+sentence-transformers = "^4.1.0"
 
 [tool.poetry.group.mcp.dependencies]
 # Model Context Protocol (optional - only if using MCP server)

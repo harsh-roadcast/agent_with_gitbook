@@ -25,10 +25,6 @@ RUN poetry config virtualenvs.create false && \
 RUN find /usr/local -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
     find /usr/local -type f -name "*.pyc" -delete 2>/dev/null || true
 
-# Clean up build artifacts
-RUN find /usr/local -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
-    find /usr/local -type f -name "*.pyc" -delete 2>/dev/null || true
-
 # Final stage
 FROM python:3.12-slim
 
@@ -45,12 +41,13 @@ COPY --from=builder /usr/local /usr/local
 # Copy application code
 COPY . .
 
-# Expose port (Render sets PORT env var)
-EXPOSE 8001
+# Default port configuration
+ENV PORT=8000
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8001/health')" || exit 1
+    CMD python -c "import os,requests; port=os.environ.get('PORT','8000'); requests.get(f'http://localhost:{port}/health')" || exit 1
 
-# Run with Uvicorn
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Run with Uvicorn honoring Render's PORT
+CMD ["sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

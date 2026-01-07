@@ -8,6 +8,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
 
 from services.auth_service import get_current_user
 from services.bulk_index_service import create_index_if_not_exists
+from services.search_service import EMBEDDING_DIM
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ async def process_pdf_document(
                     "filename": {"type": "keyword"},
                     "chunk_id": {"type": "integer"},
                     "text": {"type": "text", "analyzer": "standard"},
-                    "embedding": {"type": "dense_vector", "dims": 384},
+                    "embedding": {"type": "dense_vector", "dims": EMBEDDING_DIM},
                     "metadata": {
                         "properties": {
                             "upload_timestamp": {"type": "date"},

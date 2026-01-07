@@ -5,7 +5,7 @@ import time
 from typing import List, Dict, Any
 
 from elasticsearch import Elasticsearch
-from sentence_transformers import SentenceTransformer
+from openai import OpenAI
 
 # Import the Pydantic models
 from services.models import QueryResult, VectorQueryResult
@@ -21,16 +21,15 @@ es_client = Elasticsearch(
     request_timeout=30
 )
 
-# Global sentence transformer model
-sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+# OpenAI embedding client (lazy initialized)
+OPENAI_EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
+EMBEDDING_DIM = int(os.getenv('EMBEDDING_DIM', '1536'))
+_openai_api_key = os.getenv('OPENAI_API_KEY')
+openai_client = OpenAI(api_key=_openai_api_key) if _openai_api_key else None
 
 def get_es_client():
     """Returns the global Elasticsearch client instance."""
     return es_client
-
-def get_sentence_transformer_model():
-    """Returns the global sentence transformer model instance."""
-    return sentence_model
 
 def execute_query(query_body: dict, index: str) -> QueryResult:
     """Execute a standard Elasticsearch query"""
@@ -220,10 +219,21 @@ def _process_aggregations(aggregations: Dict[str, Any]) -> List[Dict[str, Any]]:
     return processed_data
 
 def generate_embedding(text: str) -> List[float]:
-    """Generate an embedding vector for the given text."""
-    embedding = sentence_model.encode(text).tolist()
-    logger.debug(f"Generated embedding of length {len(embedding)} for text: {text[:50]}...")
-    return embedding
+    """Generate an embedding vector for the given text using OpenAI."""
+    if not openai_client:
+        raise RuntimeError("OPENAI_API_KEY is not configured; cannot generate embeddings")
+
+    try:
+        response = openai_client.embeddings.create(
+            model=OPENAI_EMBEDDING_MODEL,
+            input=text
+        )
+        embedding = response.data[0].embedding
+        logger.debug(f"Generated embedding of length {len(embedding)} for text: {text[:50]}...")
+        return embedding
+    except Exception as embed_err:
+        logger.error(f"OpenAI embedding generation failed: {embed_err}")
+        raise
 
 def execute_vector_query(es_query: dict) -> VectorQueryResult:
     """Execute vector search query. Falls back to text search for ES 7.x compatibility."""
