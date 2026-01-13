@@ -1,0 +1,14 @@
+artifact_uri: file:///home/harsh/Desktop/Projects/dspy_agent_es_old/mlruns/109951043840114035/6686238a592f40a180e7616df34402a2/artifacts
+end_time: null
+entry_point_name: ''
+experiment_id: '109951043840114035'
+lifecycle_stage: active
+run_id: 6686238a592f40a180e7616df34402a2
+run_name: nervous-cod-305
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1768285564529
+status: 1
+tags: []
+user_id: harsh

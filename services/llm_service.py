@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict
 
 import dspy
@@ -13,7 +14,15 @@ logger = logging.getLogger(__name__)
 
 def init_llm():
     """Initialize the DSPy language model without usage tracking"""
-    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+    if not tracking_uri:
+        project_root = Path(__file__).resolve().parent.parent
+        tracking_dir = project_root / "mlruns"
+        tracking_dir.mkdir(parents=True, exist_ok=True)
+        tracking_uri = f"file:{tracking_dir.as_posix()}"
+        logger.info(f"MLFLOW_TRACKING_URI not set; defaulting to {tracking_uri}")
+
+    mlflow.set_tracking_uri(tracking_uri)
     # Create a unique name for your experiment.
     mlflow.set_experiment("DSPy-rsdc")
     mlflow.dspy.autolog(log_traces_from_eval=True)

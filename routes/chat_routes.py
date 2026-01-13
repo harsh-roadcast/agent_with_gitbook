@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
+import uuid
 
 from services.auth_service import get_current_user
 from services.conversation_service import ConversationService
@@ -79,9 +80,15 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
         agent_config = get_agent_config(model)
     except ValueError as e:
         logger.error(f"Agent not found for model '{model}': {e}")
-        error_msg = f"Agent '{model}' not found. Available agents: bolt_data_analyst, synco_agent, police_assistant"
-        yield handler.create_sse_response("error", error_msg, finish_reason="stop")
-        yield "data: [DONE]\n\n"
+        error_payload = {
+            "type": "error",
+            "content": {
+                "message": f"Agent '{model}' not found. Available agents: bolt_data_analyst, synco_agent, police_assistant"
+            },
+            "render_type": "error"
+        }
+        yield handler.create_sse_response(error_payload, finish_reason="stop")
+        yield handler.create_final_response()
         return
 
     # Create QueryRequest with agent configuration
@@ -128,7 +135,14 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
 
     except Exception as e:
         logger.error(f"Error during stream generation: {str(e)}")
-        yield handler.create_sse_response("error", f"An error occurred: {str(e)}", finish_reason="error")
+        error_payload = {
+            "type": "error",
+            "content": {
+                "message": f"An error occurred: {str(e)}"
+            },
+            "render_type": "error"
+        }
+        yield handler.create_sse_response(error_payload, finish_reason="error")
 
     # Always send final response
     handler.log_timing("Stream completed")
@@ -141,10 +155,25 @@ async def chat_completions(request: Request, user_info: Dict[str, Any] = Depends
     data = await request.json()
     messages = data.get("messages", [])
 
-    user_message = next((msg["content"] for msg in reversed(messages)
-                         if msg.get("role") == "user"), None)
+    user_message = next((msg.get("content") for msg in reversed(messages)
+                         if msg.get("role") == "user" and msg.get("content")), None)
 
-    message_id = messages[-1]['message_id']
+    if not user_message:
+        error_response = {
+            "error": {
+                "message": "Chat completion payload must include at least one user message with content",
+                "type": "invalid_request_error",
+                "code": "missing_user_message"
+            }
+        }
+        return JSONResponse(content=error_response, status_code=400)
+
+    message_id = None
+    if messages:
+        message_id = messages[-1].get('message_id')
+
+    if not message_id:
+        message_id = f"msg-{uuid.uuid4().hex}"
     stream = data.get("stream", False)
     session_id = data.get("session_id", "default")
     model = data.get("model", "general_assistant")  # Default to general_assistant

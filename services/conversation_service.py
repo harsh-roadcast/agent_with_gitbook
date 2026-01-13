@@ -186,6 +186,41 @@ class ConversationService:
 
         return "\n".join(context_parts)
 
+    def get_context_for_query(self, session_id: str, max_messages: int = 5) -> str:
+        """Return a concise textual context for downstream query planning."""
+        messages = self.get_conversation_history(session_id)
+        if not messages:
+            return ""
+
+        recent_messages = messages[-max_messages:]
+        context_lines = []
+        for msg in recent_messages:
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            if isinstance(content, dict):
+                summary = content.get('summary') or json.dumps(content)
+            else:
+                summary = content
+            context_lines.append(f"{role.capitalize()}: {summary}")
+
+        return "\n".join(context_lines)
+
+    def get_recent_data_context(self, session_id: str) -> Dict[str, Any]:
+        """Provide structured view of last assistant response fields."""
+        messages = self.get_conversation_history(session_id)
+        for msg in reversed(messages):
+            if msg.get('role') == 'assistant':
+                content = msg.get('content', {})
+                if isinstance(content, dict):
+                    return {
+                        'summary': content.get('summary'),
+                        'elastic_query': content.get('elastic_query'),
+                        'elastic_index': content.get('elastic_index'),
+                        'vector_query': content.get('vector_query')
+                    }
+                return {'summary': content}
+        return {}
+
     def get_session_stats(self, session_id: str) -> Dict[str, Any]:
         """Get statistics for a conversation session."""
         messages = self.get_conversation_history(session_id)

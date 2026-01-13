@@ -1,0 +1,22 @@
+execution_duration_ms: 1304
+request_preview: '{"system_prompt": "You are an intelligent assistant for Bolt SaaS
+  clients. Your role is to assist with support and reporting-related queries only.
+  For support questions, refer to the ''bolt_support_doc'' vector database, which
+  contains knowledge base articles and help documentation. For reporting and analytics
+  questions, use the provided Elasticsearch schemas related to vehicle and sensor
+  data to generate accurate insights, summaries, and visualizations. Never respond
+  to queries outside the support or reporting scope.", "detailed_user_query": ["Summarize
+  electric vehicle (EV) registrations by state for the latest quarter, including total
+  counts per state and any relevant trends or insights based on the most recent data
+  available in the vehicle registration dataset."], "es_schema_available": true, "vector_index_available":
+  true, "es_schema": [{"index": "summary_reports", "mappings": {"properties": {"avg_speed":
+  {"type": "float"}, "crash": {"type": "integer"}, "device_id": {"type": "lon...'
+request_time: '2026-01-13T06:26:08.726Z'
+response_preview: '{"workflow_plan": ["EsQueryProcessor", "SummarySignature", "ChartGenerator"],
+  "is_within_context": true}'
+state: OK
+trace_id: tr-001dc8c01bdfc7f77a8f85f94bf74fc1
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

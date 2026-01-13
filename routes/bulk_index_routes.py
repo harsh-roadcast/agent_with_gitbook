@@ -64,15 +64,48 @@ async def get_bulk_index_status(
     from celery_app import celery_app
 
     task = celery_app.AsyncResult(task_id)
+    state = (task.state or "PENDING").upper()
+    task_info = task.info if isinstance(task.info, dict) else {}
+
+    if state == "PROGRESS":
+        progress = task_info.get("progress", 0)
+        message = task_info.get("status", "Task is in progress")
+    elif state == "SUCCESS":
+        progress = 100
+        message = task_info.get("status", "Task completed")
+    elif state == "FAILURE":
+        progress = task_info.get("progress", 0)
+        message = task_info.get("status", "Task failed")
+    else:
+        progress = 0
+        message = f"Task is {state.lower()}"
 
     return {
         "task_id": task_id,
-        "status": task.state.lower(),
-        "progress": task.info.get("progress", 0) if task.state == "PROGRESS" else (100 if task.state == "SUCCESS" else 0),
-        "message": task.info.get("status", f"Task is {task.state.lower()}") if hasattr(task, 'info') else f"Task is {task.state.lower()}",
-        "result": task.result if task.state == "SUCCESS" else None,
-        "error": str(task.result) if task.state == "FAILURE" else None
+        "status": state.lower(),
+        "progress": progress,
+        "message": message,
+        "result": task.result if state == "SUCCESS" else None,
+        "error": str(task.result) if state == "FAILURE" else None
     }
+
+
+@router.post("/tasks/bulk-index")
+async def bulk_index_documents_alias(
+    request: BulkIndexRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Compatibility alias for /bulk-index."""
+    return await bulk_index_documents_endpoint(request, current_user)
+
+
+@router.get("/tasks/{task_id}/status")
+async def get_task_status_alias(
+    task_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Compatibility alias for /bulk-index/status/{task_id}."""
+    return await get_bulk_index_status(task_id, current_user)
 
 
 @router.delete("/index/{index_name}")

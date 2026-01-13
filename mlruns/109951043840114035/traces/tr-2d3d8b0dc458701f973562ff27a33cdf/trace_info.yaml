@@ -1,0 +1,27 @@
+execution_duration_ms: 3887
+request_preview: '{"detailed_user_query": ["Summarize electric vehicle (EV) registrations
+  by state for the latest quarter, including total counts per state and any relevant
+  trends or insights based on the most recent data available in the vehicle registration
+  dataset."], "es_schema": [{"index": "summary_reports", "mappings": {"properties":
+  {"avg_speed": {"type": "float"}, "crash": {"type": "integer"}, "device_id": {"type":
+  "long"}, "device_name": {"type": "text", "fields": {"keyword": {"type": "keyword",
+  "ignore_above": 256}}}, "distance": {"type": "float"}, "driver_name": {"type": "text",
+  "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}}, "driving_safety_score":
+  {"type": "integer"}, "driving_score": {"type": "long"}, "duration": {"type": "long"},
+  "end_lat": {"type": "float"}, "end_lng": {"type": "float"}, "end_position_id": {"type":
+  "long"}, "end_time": {"type": "date", "format": "yyyy-MM-dd''T''HH:mm:ss||yyyy-MM-dd
+  HH:mm:ss||epoch_millis"}, "end_time_date": {"type": "date"}, "end_time_...'
+request_time: '2026-01-13T06:26:10.041Z'
+response_preview: '{"elastic_query": [{"size": 0, "query": {"bool": {"filter": [{"range":
+  {"summary_date": {"gte": "now-3M/M", "lte": "now/M"}}}, {"term": {"vehicle_type.keyword":
+  "EV"}}]}}, "aggs": {"by_state": {"terms": {"field": "region.keyword", "size": 25,
+  "order": {"total_registrations": "desc"}}, "aggs": {"total_registrations": {"value_count":
+  {"field": "id"}}, "registrations_over_time": {"date_histogram": {"field": "summary_date",
+  "calendar_interval": "month", "order": {"_key": "desc"}, "min_doc_count": 0}}}}}}],
+  "elastic_index": ["summary_reports"]}'
+state: OK
+trace_id: tr-2d3d8b0dc458701f973562ff27a33cdf
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

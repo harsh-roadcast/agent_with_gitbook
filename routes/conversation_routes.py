@@ -8,6 +8,9 @@ from fastapi.responses import JSONResponse
 
 from services.auth_service import get_current_user
 from services.conversation_service import conversation_service
+from agents.query_agent import QueryAgent
+from agents.agent_config import get_agent_config
+from modules.query_models import QueryRequest
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +107,7 @@ async def add_message_to_thread(
     try:
         message = request.get("message", "")
         stream = request.get("stream", False)
+        model = request.get("model", "bolt_data_analyst")
         message_id = request.get("message_id")  # Single message_id from frontend
 
         if not message:
@@ -121,30 +125,69 @@ async def add_message_to_thread(
             from sse_starlette.sse import EventSourceResponse
 
             return EventSourceResponse(
-                generate_stream(message, thread_id, current_user, model="LLM_TEXT_SQL", message_id=message_id)
+                generate_stream(message, thread_id, current_user, model=model, message_id=message_id)
             )
         else:
-            # Non-streaming response
-            from modules.models import ActionDecider
-
             conversation_service.add_user_message(thread_id, message, message_id)
             conversation_history = conversation_service.get_conversation_history(thread_id)
 
-            ad = ActionDecider()
-            result_dict = {}
+            try:
+                agent_config = get_agent_config(model)
+            except ValueError as err:
+                logger.error(f"Agent not found for model '{model}': {err}")
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "message": f"Agent '{model}' not found. Available agents: bolt_data_analyst, synco_agent, police_assistant",
+                            "type": "invalid_request_error",
+                            "code": "agent_not_found"
+                        }
+                    }
+                )
 
-            async for field, value in ad.process_async(
+            query_request = QueryRequest(
                 user_query=message,
-                conversation_history=conversation_history
-            ):
-                if field not in ["database", "chart_html"]:
-                    result_dict[field] = value
+                system_prompt=agent_config.system_prompt,
+                conversation_history=conversation_history,
+                es_schemas=agent_config.es_schemas or [],
+                vector_db_index=agent_config.vector_db or "docling_documents",
+                query_instructions=agent_config.query_instructions,
+                goal=agent_config.goal,
+                success_criteria=agent_config.success_criteria,
+                dsl_rules=agent_config.dsl_rules
+            )
 
-            conversation_service.add_assistant_response(thread_id, result_dict, message_id)
+            query_agent = QueryAgent()
+            result_dict: Dict[str, Any] = {}
+
+            try:
+                async for msg_type, msg_data in query_agent.process_query_async(
+                    request=query_request,
+                    session_id=thread_id,
+                    message_id=message_id
+                ):
+                    if msg_type != "message":
+                        continue
+
+                    message_type = msg_data.get("type")
+                    message_content = msg_data.get("content")
+
+                    if message_type and message_content and message_type != "debug":
+                        result_dict[message_type] = message_content
+
+                conversation_service.add_assistant_response(thread_id, result_dict, message_id)
+
+            except Exception as err:
+                logger.error(f"Error processing thread {thread_id} message: {err}", exc_info=True)
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": f"Processing error: {str(err)}"}
+                )
 
             response = {
                 "thread_id": thread_id,
-                "message_id": message_id,  # Use the same message ID
+                "message_id": message_id,
                 "user_id": user_id,
                 "created_at": int(time.time()),
                 "role": "assistant",

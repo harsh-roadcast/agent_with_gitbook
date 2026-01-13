@@ -1,0 +1,25 @@
+execution_duration_ms: 17661
+request_preview: '{"detailed_user_query": ["Summarize electric vehicle registrations
+  by state for the most recent quarter available in the dataset."], "es_schema": [{"index":
+  "summary_reports", "mappings": {"properties": {"avg_speed": {"type": "float"}, "crash":
+  {"type": "integer"}, "device_id": {"type": "long"}, "device_name": {"type": "text",
+  "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}}, "distance": {"type":
+  "float"}, "driver_name": {"type": "text", "fields": {"keyword": {"type": "keyword",
+  "ignore_above": 256}}}, "driving_safety_score": {"type": "integer"}, "driving_score":
+  {"type": "long"}, "duration": {"type": "long"}, "end_lat": {"type": "float"}, "end_lng":
+  {"type": "float"}, "end_position_id": {"type": "long"}, "end_time": {"type": "date",
+  "format": "yyyy-MM-dd''T''HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"}, "end_time_date":
+  {"type": "date"}, "end_time_epoch": {"type": "long"}, "end_time_time": {"type":
+  "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256...'
+request_time: '2026-01-13T06:42:34.427Z'
+response_preview: '{"elastic_query": [{"size": 0, "query": {"bool": {"filter": [{"range":
+  {"summary_date": {"gte": "now-3M/M", "lte": "now/M"}}}, {"term": {"vehicle_type.keyword":
+  "electric"}}]}}, "aggs": {"by_quarter": {"date_histogram": {"field": "summary_date",
+  "calendar_interval": "quarter", "order": {"_key": "desc"}, "min_doc_count": 1},
+  "aggs": {"by_state": {"terms": {"field": "region.keyword", "size": 25, "_order_by_count_desc_implicit_rename_to_order_ignored_please_remove_this_field_please_do_not_use_size_inside_date_histogram_buckets_bug_workaround__do_not_use_this_field__fix_it_in_es_client_later_placeholder_ignore_this_field_in_execution_please_ignore_this_field_and_fix_client_later_only_for_now__sorry_for_inconvenience___thank_you___bye___goodbye___adios___ciao___au_revoir___tschuss___sayonara___namaste__bye_bye_bye_bye_bye_bye_bye_bye_bye_bye_1_2_3_or_is_it_the_end_of_query_too_long_name_really_needed_to_fill_some_space_so_we_can_keep_the_formatting_properly_without_errors_in_json_parsing...'
+state: OK
+trace_id: tr-4d52051ca6e2be17c0591a5f54a7bea3
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

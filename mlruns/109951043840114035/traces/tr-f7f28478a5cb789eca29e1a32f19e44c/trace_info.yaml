@@ -1,0 +1,26 @@
+execution_duration_ms: 3161
+request_preview: '{"detailed_user_query": ["Summarize electric vehicle registrations
+  by state for the latest quarter available in the dataset."], "es_schema": [{"index":
+  "summary_reports", "mappings": {"properties": {"avg_speed": {"type": "float"}, "crash":
+  {"type": "integer"}, "device_id": {"type": "long"}, "device_name": {"type": "text",
+  "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}}, "distance": {"type":
+  "float"}, "driver_name": {"type": "text", "fields": {"keyword": {"type": "keyword",
+  "ignore_above": 256}}}, "driving_safety_score": {"type": "integer"}, "driving_score":
+  {"type": "long"}, "duration": {"type": "long"}, "end_lat": {"type": "float"}, "end_lng":
+  {"type": "float"}, "end_position_id": {"type": "long"}, "end_time": {"type": "date",
+  "format": "yyyy-MM-dd''T''HH:mm:ss||yyyy-MM-dd HH:mm:ss||epoch_millis"}, "end_time_date":
+  {"type": "date"}, "end_time_epoch": {"type": "long"}, "end_time_time": {"type":
+  "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}}, ...'
+request_time: '2026-01-13T06:46:05.319Z'
+response_preview: '{"elastic_query": [{"size": 0, "query": {"bool": {"filter": [{"range":
+  {"summary_date": {"gte": "now-3M/M", "lte": "now/M"}}}, {"term": {"vehicle_type.keyword":
+  "electric"}}]}}, "aggs": {"latest_quarter": {"date_range": {"field": "summary_date",
+  "ranges": [{"from": "now-3M/M", "to": "now/M"}]}, "aggs": {"by_state": {"terms":
+  {"field": "region.keyword", "size": 25, "order": {"_count": "desc"}}}}}}}], "elastic_index":
+  ["summary_reports"]}'
+state: OK
+trace_id: tr-f7f28478a5cb789eca29e1a32f19e44c
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT
