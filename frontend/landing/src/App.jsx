@@ -3,6 +3,11 @@ import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const CHAT_TOKEN = import.meta.env.VITE_CHAT_TOKEN || '';
+const GITBOOK_MODEL = 'gitbook_rag';
+const DEFAULT_SESSION_ID = 'gitbook-landing';
+
 const features = [
   {
     title: 'Unified Data Canvas',
@@ -325,10 +330,25 @@ export default function App() {
     });
 
     try {
-      const response = await fetch('http://localhost:8000/v1/gitbook/chat', {
+      const headers = { 'Content-Type': 'application/json' };
+      if (CHAT_TOKEN) {
+        headers.Authorization = `Bearer ${CHAT_TOKEN}`;
+      }
+
+      const payload = {
+        model: GITBOOK_MODEL,
+        stream: true,
+        session_id: DEFAULT_SESSION_ID,
+        gitbook_options: { limit: 4 },
+        messages: [
+          { role: 'user', content: trimmed }
+        ]
+      };
+
+      const response = await fetch(`${API_BASE_URL}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: trimmed, limit: 4 })
+        headers,
+        body: JSON.stringify(payload)
       });
       if (!response.ok) {
         const errorText = await response.text();
@@ -345,33 +365,56 @@ export default function App() {
       let receivedChunk = false;
       let receivedError = false;
       let shouldAbort = false;
+      let sawReferences = false;
 
-      const processEventLine = (line) => {
-        if (!line || shouldAbort) return;
-        let event;
-        try {
-          event = JSON.parse(line);
-        } catch (err) {
-          return;
-        }
+          const processEventLine = (rawLine) => {
+            if (!rawLine || shouldAbort) return;
 
-        switch (event.type) {
-          case 'answer_chunk':
-            receivedChunk = true;
-            appendAssistantDelta(event.delta || '');
-            break;
-          case 'references':
-            applyAssistantReferences(event.references || []);
-            break;
-          case 'error':
-            receivedError = true;
-            overwriteAssistant(event.message || 'Chat failed. Please retry.');
-            shouldAbort = true;
-            break;
-          default:
-            break;
-        }
-      };
+            // SSE frames prefix payload lines with "data:"; strip it before parsing
+            let line = rawLine.trim();
+            if (!line) return;
+            if (line.startsWith('data:')) {
+              line = line.slice(5).trim();
+            }
+            if (!line || line.startsWith(':')) {
+              return;
+            }
+            if (line === '[DONE]') {
+              shouldAbort = true;
+              return;
+            }
+
+            let event;
+            try {
+              event = JSON.parse(line);
+            } catch (err) {
+              return;
+            }
+
+            const payload = event.message || event;
+            const payloadType = payload?.type;
+
+            switch (payloadType) {
+              case 'gitbook_answer_chunk':
+              case 'assistant':
+                receivedChunk = true;
+                appendAssistantDelta(typeof payload.content === 'string' ? payload.content : '');
+                break;
+              case 'gitbook_references':
+                sawReferences = true;
+                applyAssistantReferences(Array.isArray(payload.content) ? payload.content : []);
+                break;
+              case 'error':
+                receivedError = true;
+                overwriteAssistant(
+                  typeof payload.content === 'string' ? payload.content : 'Chat failed. Please retry.'
+                );
+                shouldAbort = true;
+                break;
+              default:
+                break;
+            }
+          };
 
       while (true) {
         const { value, done } = await reader.read();
@@ -394,6 +437,8 @@ export default function App() {
 
       if (!receivedChunk && !receivedError) {
         overwriteAssistant("I couldn't find anything for that query.");
+      } else if (!sawReferences) {
+        appendAssistantDelta('\n\nReferences could not be retrieved this time.');
       }
     } catch (error) {
       overwriteAssistant('Search failed. Check the FastAPI logs.');
