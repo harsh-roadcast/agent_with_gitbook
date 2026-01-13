@@ -1,0 +1,83 @@
+{
+  "space": "roadcast-docs",
+  "base_url": "https://roadcast.gitbook.io/roadcast-docs",
+  "pages_discovered": 5,
+  "pages_ingested": 5,
+  "documents": [
+    {
+      "id": "sitemap-pages-xml",
+      "title": "Sitemap Pages.Xml",
+      "slug": "sitemap-pages-xml",
+      "url": "https://roadcast.gitbook.io/roadcast-docs/sitemap-pages.xml",
+      "path": "sitemap-pages.xml",
+      "headings": [],
+      "text": "https://roadcast.gitbook.io/roadcast-docs\n1\n2025-12-22T09:28:58.729Z",
+      "excerpt": "https://roadcast.gitbook.io/roadcast-docs\n1\n2025-12-22T09:28:58.729Z",
+      "source": "gitbook",
+      "space": "roadcast-docs",
+      "last_fetched_at": "2026-01-13T09:17:35.283092+00:00",
+      "word_count": 3,
+      "reading_time_minutes": 0.01
+    },
+    {
+      "id": "documentation-sitemap-pages-xml",
+      "title": "Documentation/Sitemap Pages.Xml",
+      "slug": "documentation-sitemap-pages-xml",
+      "url": "https://roadcast.gitbook.io/roadcast-docs/documentation/sitemap-pages.xml",
+      "path": "documentation/sitemap-pages.xml",
+      "headings": [],
+      "text": "https://roadcast.gitbook.io/roadcast-docs/documentation\n1\n2025-12-23T07:44:08.277Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/getting-started\n0.84\n2025-12-23T07:28:18.218Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/live-tracking-and-remote-operations\n0.84\n2025-12-29T07:04:29.971Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/yard-and-warehouse-management\n0.84\n2025-12-23T11:39:07.885Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/billing-and-enterprise-wallet-logic\n0.84\n2025-12-23T11:38:10.508Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/reports-and-analytics\n0.84\n2025-12-22T09:13:25.235Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/administration-and-governance\n0.84\n2025-12-23T11:31:50.882Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/ui-ux-specifications-and-design-system\n0.84\n2025-12-29T10:50:31.813Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/core-operational-logic-and-expected-behaviors\n0.84\n2025-12-24T10:30:33.348Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/troubleshooting-faq\n0.84\n2025-12-23T07:38:03.868Z",
+      "excerpt": "https://roadcast.gitbook.io/roadcast-docs/documentation\n1\n2025-12-23T07:44:08.277Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/getting-started\n0.84\n2025-12-23T07:28:18.218Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/live-tracking-and-remote-operations\n0.84\n2025-12-29T07:04:29.971Z\nhttps://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/yard-and-warehouse-management\n0.84\n2025-12-23T11:39:07.885Z\nhttps://roadcast.gitbook.io/roadcast-docs/do",
+      "source": "gitbook",
+      "space": "roadcast-docs",
+      "last_fetched_at": "2026-01-13T09:17:35.424306+00:00",
+      "word_count": 30,
+      "reading_time_minutes": 0.15
+    },
+    {
+      "id": "api-reference-sitemap-pages-xml",
+      "title": "Api Reference/Sitemap Pages.Xml",
+      "slug": "api-reference-sitemap-pages-xml",
+      "url": "https://roadcast.gitbook.io/roadcast-docs/api-reference/sitemap-pages.xml",
+      "path": "api-reference/sitemap-pages.xml",
+      "headings": [],
+      "text": "https://roadcast.gitbook.io/roadcast-docs/api-reference\n1\nhttps://roadcast.gitbook.io/roadcast-docs/api-reference/reference/petstore\n0.84\n2026-01-13T06:55:02.000Z\nhttps://roadcast.gitbook.io/roadcast-docs/api-reference/reference/store\n0.84\n2026-01-13T06:55:02.000Z\nhttps://roadcast.gitbook.io/roadcast-docs/api-reference/reference/store/pets\n0.7\n2026-01-13T06:55:02.000Z",
+      "excerpt": "https://roadcast.gitbook.io/roadcast-docs/api-reference\n1\nhttps://roadcast.gitbook.io/roadcast-docs/api-reference/reference/petstore\n0.84\n2026-01-13T06:55:02.000Z\nhttps://roadcast.gitbook.io/roadcast-docs/api-reference/reference/store\n0.84\n2026-01-13T06:55:02.000Z\nhttps://roadcast.gitbook.io/roadcast-docs/api-reference/reference/store/pets\n0.7\n2026-01-13T06:55:02.000Z",
+      "source": "gitbook",
+      "space": "roadcast-docs",
+      "last_fetched_at": "2026-01-13T09:17:35.538298+00:00",
+      "word_count": 11,
+      "reading_time_minutes": 0.06
+    },
+    {
+      "id": "changelog-sitemap-pages-xml",
+      "title": "Changelog/Sitemap Pages.Xml",
+      "slug": "changelog-sitemap-pages-xml",
+      "url": "https://roadcast.gitbook.io/roadcast-docs/changelog/sitemap-pages.xml",
+      "path": "changelog/sitemap-pages.xml",
+      "headings": [],
+      "text": "https://roadcast.gitbook.io/roadcast-docs/changelog\n1",
+      "excerpt": "https://roadcast.gitbook.io/roadcast-docs/changelog\n1",
+      "source": "gitbook",
+      "space": "roadcast-docs",
+      "last_fetched_at": "2026-01-13T09:17:35.663359+00:00",
+      "word_count": 2,
+      "reading_time_minutes": 0.01
+    },
+    {
+      "id": "help-center-sitemap-pages-xml",
+      "title": "Help Center/Sitemap Pages.Xml",
+      "slug": "help-center-sitemap-pages-xml",
+      "url": "https://roadcast.gitbook.io/roadcast-docs/help-center/sitemap-pages.xml",
+      "path": "help-center/sitemap-pages.xml",
+      "headings": [],
+      "text": "https://roadcast.gitbook.io/roadcast-docs/help-center\n1",
+      "excerpt": "https://roadcast.gitbook.io/roadcast-docs/help-center\n1",
+      "source": "gitbook",
+      "space": "roadcast-docs",
+      "last_fetched_at": "2026-01-13T09:17:35.770002+00:00",
+      "word_count": 2,
+      "reading_time_minutes": 0.01
+    }
+  ]
+}

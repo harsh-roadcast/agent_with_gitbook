@@ -15,7 +15,8 @@ from routes import (
     conversation_routes,
     search_routes,
     document_routes,
-    bulk_index_routes
+    bulk_index_routes,
+    gitbook_routes
 )
 from services.auth_service import generate_startup_token
 from services.llm_service import init_llm
@@ -66,6 +67,7 @@ app.include_router(conversation_routes.router)
 app.include_router(search_routes.router)
 app.include_router(document_routes.router)
 app.include_router(bulk_index_routes.router)
+app.include_router(gitbook_routes.router)
 
 @app.get("/")
 async def root_with_static():

@@ -1,0 +1,32 @@
+execution_duration_ms: 8984
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "tell
+  me about yard management system in bolt", "snippets": ["[1] Title: Yard & Warehouse
+  Management | Documentation | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/yard-and-warehouse-management\nExcerpt:
+  copy\nCopy\nchevron-down\nBasic Docs\nYard & Warehouse Management\nhashtag\nDock
+  & Trip Flow\nOptimizing turn-around time (TAT) is the primary goal of the Yard module.\nTrip
+  Purpose:\nEvery vehicle entering the facility must be assigned a purpose (e.g.,
+  Inward Goods, Outbound Dispatch, or Empty movement).\nDock Activity:\nTrack exactly
+  how long a vehicle stays at a specific dock for loading or unloading.\nApproval
+  Matrix:\nCustom workflow...'
+request_time: '2026-01-13T11:16:00.975Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nThe Yard Management System
+  in Bolt focuses on optimizing turn-around time (TAT) for vehicles entering and exiting
+  a facility. It assigns a purpose to each vehicle, tracks dock activity, and incorporates
+  an approval matrix for gate events, all aimed at improving operational efficiency.\n\n##
+  Key Details\n- Every vehicle entering the yard is assigned a purpose such as Inward
+  Goods, Outbound Dispatch, or Empty movement to streamline operations [1].\n- The
+  system tracks how long a vehicle stays at a specific dock for loading or unloading,
+  providing precise dock activity monitoring [1].\n- An approval matrix allows for
+  digital authorization from supervisors for gate-in or gate-out events, ensuring
+  controlled access [1].\n- The TAT Gauge visualizes average gate-to-gate times to
+  help yard managers monitor and improve facility efficiency [1].\n\n## References\n[1]
+  Yard & Warehouse Management | Documentation | Roadcast Docs — https://roadcast.gitbook.io...'
+state: OK
+trace_id: tr-8240b90364ac1555c5e6f21c3f7d150f
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

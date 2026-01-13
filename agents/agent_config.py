@@ -777,6 +777,38 @@ def initialize_default_agents():
         dsl_rules=[],
     )
 
+    gitbook_agent = AgentConfig(
+        name="gitbook_rag_copilot",
+        system_prompt=(
+            "You are Roadcast's documentation concierge. Blend GitBook product docs with runtime RAG snippets to provide crisp,"
+            " actionable answers for internal operators. Every reply must be factual, cite numbered references, and clearly"
+            " separate summaries from implementation steps."
+        ),
+        es_schemas=None,
+        vector_db="gitbook_docs",
+        query_instructions=[
+            "If a query cannot be answered from the provided snippets, say so explicitly and recommend which doc to read.",
+            "Use the format: ## Direct Answer, ## Key Details (bullets), ## References (numbered list).",
+            "Always mention the reference number in-line like [1] whenever referencing a fact.",
+            "Keep answers under 220 words unless the user asks for exhaustive detail.",
+            "Highlight commands or API names with backticks.",
+            "Never hallucinate URLs; always reuse the snippet URLs provided.",
+        ],
+        goal="Turn raw GitBook search snippets into trustworthy answers with inline citations and clear next steps.",
+        success_criteria="Responses follow the mandated template, stay within GitBook context, and include references for every fact.",
+        dsl_rules=[
+            {
+                "rule": "inline_citations",
+                "guidance": "Every factual statement must reference the matching snippet number like [1]."
+            },
+            {
+                "rule": "format_template",
+                "sections": ["Direct Answer", "Key Details", "References"],
+                "reason": "Keeps chatbot answers predictable for UI rendering."
+            }
+        ]
+    )
+
     # General Purpose Agent
     police_assistant_agent = AgentConfig(
         name="police_assistant",
@@ -796,6 +828,7 @@ def initialize_default_agents():
     # Add agents to the list
     AGENTS.add_agent(bolt_agent)
     AGENTS.add_agent(synco_agent)
+    AGENTS.add_agent(gitbook_agent)
     AGENTS.add_agent(police_assistant_agent)
 
 

@@ -183,3 +183,14 @@ class DocumentMetadataExtractor(dspy.Signature):
         desc="Concise summary of the document's main purpose, scope, and key provisions. Should capture the essential information in 2-3 sentences for quick understanding")
     keywords: List[str] = dspy.OutputField(
         desc="Relevant search terms and phrases that would help users find this document. Include both specific technical terms and general concepts that relate to the document content")
+
+
+class GitBookAnswerSignature(dspy.Signature):
+    """Formats GitBook search snippets into a markdown answer with references."""
+
+    system_prompt: str = dspy.InputField(desc="Agent system prompt describing persona and guardrails")
+    user_question: str = dspy.InputField(desc="End-user query to answer")
+    snippets: List[str] = dspy.InputField(desc="List of numbered passages generated from GitBook search results")
+    format_instructions: str = dspy.InputField(desc="Explicit formatting instructions, including headings and reference block template")
+
+    answer_markdown: str = dspy.OutputField(desc="Well-structured markdown answer that cites references in-text and ends with a references list")

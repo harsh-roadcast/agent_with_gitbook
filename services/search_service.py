@@ -13,11 +13,15 @@ from util.context import get_authorization_header
 
 logger = logging.getLogger(__name__)
 
-# Global Elasticsearch client
+ES_HOST = os.getenv('ES_HOST') or 'http://127.0.0.1:9200'
+ES_USERNAME = os.getenv('ES_USERNAME')
+ES_PASSWORD = os.getenv('ES_PASSWORD')
+ES_VERIFY_CERTS = os.getenv('ES_VERIFY_CERTS', 'False').lower() == 'true'
+
 es_client = Elasticsearch(
-    [os.getenv('ES_HOST')],
-    http_auth=(os.getenv('ES_USERNAME'), os.getenv('ES_PASSWORD')),
-    verify_certs=os.getenv('ES_VERIFY_CERTS', 'False').lower() == 'true',
+    [ES_HOST] if isinstance(ES_HOST, str) else ES_HOST,
+    http_auth=(ES_USERNAME, ES_PASSWORD) if ES_USERNAME and ES_PASSWORD else None,
+    verify_certs=ES_VERIFY_CERTS,
     request_timeout=30
 )
 
