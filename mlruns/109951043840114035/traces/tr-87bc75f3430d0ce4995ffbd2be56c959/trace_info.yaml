@@ -1,0 +1,33 @@
+execution_duration_ms: 21194
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "billing
+  kya hai?", "snippets": ["[1] Title: Billing & Enterprise Wallet Logic | Documentation
+  | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/billing-and-enterprise-wallet-logic\nExcerpt:
+  copy\nCopy\nchevron-down\nBasic Docs\nBilling & Enterprise Wallet Logic\nThe system
+  manages financial transactions through an internal Wallet system, supporting two
+  distinct enterprise models.\nhashtag\nCentralized Billing Model\nConcept:\nThe Parent
+  Organization acts as the \"Bank.\"\nLogic:\nAll Child Branches share a single pool
+  of funds.\nCase:\nEven if a Child Branch has no individual budget, it can perform
+  transactions (like license upgrades) as lo...'
+request_time: '2026-01-13T12:17:11.629Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nBilling in Roadcast refers
+  to the system that manages financial transactions through an internal Wallet system.
+  It supports two enterprise billing models: Centralized, where a Parent Organization
+  acts as the bank for all child branches, and Decentralized, where each branch manages
+  its own funds independently [1].\n\n## Key Details\n- In the Centralized Billing
+  Model, all child branches share a single pool of funds, allowing transactions even
+  if a child branch has no individual budget, as long as the Parent Wallet has a balance
+  [1].\n- In the Decentralized Billing Model, each branch is a siloed entity and must
+  maintain its own funds; transactions fail if the local balance is zero [1][2].\n-
+  The system automatically handles fund deductions based on the billing configuration,
+  charging the Parent Organization in centralized mode or blocking transactions in
+  decentralized mode if funds are insufficient [2].\n\n## References\n[1] Billing
+  & Enterprise ...'
+state: OK
+trace_id: tr-87bc75f3430d0ce4995ffbd2be56c959
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

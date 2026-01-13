@@ -1,0 +1,30 @@
+execution_duration_ms: 9272
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "what
+  are the billing method in bolt", "snippets": ["[1] Title: Billing & Enterprise Wallet
+  Logic | Documentation | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/billing-and-enterprise-wallet-logic\nExcerpt:
+  copy\nCopy\nchevron-down\nBasic Docs\nBilling & Enterprise Wallet Logic\nThe system
+  manages financial transactions through an internal Wallet system, supporting two
+  distinct enterprise models.\nhashtag\nCentralized Billing Model\nConcept:\nThe Parent
+  Organization acts as the \"Bank.\"\nLogic:\nAll Child Branches share a single pool
+  of funds.\nCase:\nEven if a Child Branch has no individual budget, it can perform
+  transactions (like lice...'
+request_time: '2026-01-13T11:19:18.224Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nBolt supports two primary
+  billing methods through its internal Wallet system: the Centralized Billing Model
+  and the Decentralized Billing Model. In the Centralized model, a Parent Organization
+  acts as the bank, pooling funds for all Child Branches. In the Decentralized model,
+  each branch manages its own budget independently [1].\n\n## Key Details\n- Centralized
+  Billing Model: The Parent Organization holds a single wallet balance shared by all
+  Child Branches, allowing transactions even if individual branches have no budget
+  [1].\n- Decentralized Billing Model: Each branch operates as a siloed entity, maintaining
+  its own wallet and budget [1].\n\n## References\n[1] Billing & Enterprise Wallet
+  Logic | Documentation | Roadcast Docs — https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/billing-and-enterprise-wallet-logic"}'
+state: OK
+trace_id: tr-e63f4b1a425ebe1bb6a90c0237d6c14d
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

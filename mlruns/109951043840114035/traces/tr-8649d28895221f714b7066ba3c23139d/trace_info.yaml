@@ -1,0 +1,33 @@
+execution_duration_ms: 9320
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "what
+  is billing in bolt", "snippets": ["[1] Title: Billing & Enterprise Wallet Logic
+  | Documentation | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/billing-and-enterprise-wallet-logic\nExcerpt:
+  copy\nCopy\nchevron-down\nBasic Docs\nBilling & Enterprise Wallet Logic\nThe system
+  manages financial transactions through an internal Wallet system, supporting two
+  distinct enterprise models.\nhashtag\nCentralized Billing Model\nConcept:\nThe Parent
+  Organization acts as the \"Bank.\"\nLogic:\nAll Child Branches share a single pool
+  of funds.\nCase:\nEven if a Child Branch has no individual budget, it can perform
+  transactions (like license upgrades...'
+request_time: '2026-01-13T11:28:37.624Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nBilling in Bolt refers to
+  the system''s management of financial transactions through an internal Wallet system
+  that supports two enterprise billing models: Centralized and Decentralized. This
+  system controls how funds are allocated and spent across parent organizations and
+  their branches.\n\n## Key Details\n- The Centralized Billing Model treats the Parent
+  Organization as the \"Bank,\" allowing all Child Branches to share a single pool
+  of funds. Transactions can proceed even if a Child Branch has no individual budget,
+  as long as the Parent Wallet has a balance [1].\n- The Decentralized Billing Model
+  requires each branch to maintain its own funds independently. Transactions fail
+  if a branch has zero local balance, requiring recharging before proceeding [1][4].\n-
+  The system automatically identifies the wallet type during transactions, ensuring
+  correct billing behavior such as deducting from the Parent Wallet in centralized
+  mode or blocking transa...'
+state: OK
+trace_id: tr-8649d28895221f714b7066ba3c23139d
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

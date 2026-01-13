@@ -1,0 +1,33 @@
+execution_duration_ms: 11265
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "what
+  is yard management", "snippets": ["[1] Title: Yard & Warehouse Management | Documentation
+  | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/yard-and-warehouse-management\nExcerpt:
+  copy\nCopy\nchevron-down\nBasic Docs\nYard & Warehouse Management\nhashtag\nDock
+  & Trip Flow\nOptimizing turn-around time (TAT) is the primary goal of the Yard module.\nTrip
+  Purpose:\nEvery vehicle entering the facility must be assigned a purpose (e.g.,
+  Inward Goods, Outbound Dispatch, or Empty movement).\nDock Activity:\nTrack exactly
+  how long a vehicle stays at a specific dock for loading or unloading.\nApproval
+  Matrix:\nCustom workflows where gate-in or ga...'
+request_time: '2026-01-13T11:31:28.013Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nYard management refers to
+  the operational process of managing vehicles and their activities within a facility''s
+  yard to optimize turn-around time (TAT). It involves assigning purposes to vehicles,
+  tracking dock activities, and implementing approval workflows to ensure efficient
+  loading, unloading, and movement.\n\n## Key Details\n- The primary goal of yard
+  management is to optimize turn-around time (TAT) for vehicles entering and exiting
+  the facility [1].\n- Every vehicle must be assigned a trip purpose such as Inward
+  Goods, Outbound Dispatch, or Empty movement [1].\n- Yard management tracks how long
+  a vehicle stays at a specific dock for loading or unloading [1].\n- It includes
+  an approval matrix where gate-in or gate-out events require digital authorization
+  from a supervisor [1].\n- A TAT Gauge visualizes the average gate-to-gate time to
+  monitor efficiency [1].\n\n## References\n[1] Yard & Warehouse Management | Documentation
+  | Roadcast Docs ...'
+state: OK
+trace_id: tr-ab0d0244610e0c01a74c9d3c28df6d6b
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

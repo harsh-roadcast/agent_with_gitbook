@@ -1,0 +1,33 @@
+execution_duration_ms: 7
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "what
+  is yard management in bolt", "snippets": ["[1] Title: Yard & Warehouse Management
+  | Documentation | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/yard-and-warehouse-management\nExcerpt:
+  copy\nCopy\nchevron-down\nBasic Docs\nYard & Warehouse Management\nhashtag\nDock
+  & Trip Flow\nOptimizing turn-around time (TAT) is the primary goal of the Yard module.\nTrip
+  Purpose:\nEvery vehicle entering the facility must be assigned a purpose (e.g.,
+  Inward Goods, Outbound Dispatch, or Empty movement).\nDock Activity:\nTrack exactly
+  how long a vehicle stays at a specific dock for loading or unloading.\nApproval
+  Matrix:\nCustom workflows where gate-...'
+request_time: '2026-01-13T12:17:49.515Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nYard management in Bolt
+  refers to the module designed to optimize the turn-around time (TAT) of vehicles
+  entering and exiting a facility. It involves assigning a purpose to each vehicle,
+  tracking dock activity, and managing approval workflows for gate-in and gate-out
+  events to streamline operations.\n\n## Key Details\n- Every vehicle entering the
+  facility is assigned a trip purpose such as Inward Goods, Outbound Dispatch, or
+  Empty movement to categorize its activity [1].\n- The system tracks how long a vehicle
+  stays at a specific dock for loading or unloading, helping to monitor and improve
+  efficiency [1].\n- An approval matrix allows for custom workflows where gate-in
+  or gate-out events require digital authorization from a supervisor, ensuring controlled
+  access [1].\n- The Turn-Around Time (TAT) Gauge visualizes the average gate-to-gate
+  time, providing a key performance indicator for yard operations [1].\n\n## References\n[1]
+  Yard & Warehouse ...'
+state: OK
+trace_id: tr-e2c7672e95ca0528c967a6ae6dba8618
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

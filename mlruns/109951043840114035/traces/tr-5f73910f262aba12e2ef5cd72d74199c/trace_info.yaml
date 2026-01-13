@@ -1,0 +1,29 @@
+execution_duration_ms: 9449
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "how
+  to login", "snippets": ["[1] Title: Home | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs\nExcerpt:
+  copy\nCopy\nchevron-down\nhouse\nHome\nStart here. Learn the product fast, find
+  the right workflows, and get back to ops.\nhashtag\nWelcome to the BOLT V2 docs\nYou’re
+  in the right place if you run fleets, field assets, or on‑ground teams.\nThis space
+  helps you go from “what is BOLT?” to “ship it in production”.\ncircle-info\nThese
+  docs are written for operators and product owners first.\nIf you’re integrating
+  systems, start with the overview.\nhashtag\nPick your path\nI’m new here\n→ get
+  the big picture, then learn the core concepts.\nI’m running ops today\n→ f...'
+request_time: '2026-01-13T12:18:31.356Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nTo log in to Roadcast, you
+  need to use your unique username and password associated with your organization.
+  The system also requires multi-factor authentication (MFA) or a one-time password
+  (OTP) sent via your registered email or SMS for added security.\n\n## Key Details\n-
+  Access is secured by a multi-layered protocol including credentials and MFA/OTP
+  verification [3].\n- If your account is suspended, all active sessions are instantly
+  invalidated using a session versioning strategy [3].\n- After authentication, you
+  may need to select your workspace or context to proceed [3].\n\n## References\n[3]
+  Getting Started | Documentation | Roadcast Docs — https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/getting-started"}'
+state: OK
+trace_id: tr-5f73910f262aba12e2ef5cd72d74199c
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

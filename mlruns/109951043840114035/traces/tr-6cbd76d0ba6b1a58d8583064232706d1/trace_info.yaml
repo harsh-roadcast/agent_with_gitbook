@@ -1,0 +1,31 @@
+execution_duration_ms: 8516
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "how
+  to generate a user", "snippets": ["[1] Title: Bolt V2 Fleet Management: End-User
+  | Documentation | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation\nExcerpt:
+  copy\nCopy\nchevron-down\nBolt V2 Fleet Management: End-User\nReal-time fleet intelligence
+  and configurable workflows that keep product owners and consumers moving in sync.\nWhat
+  it is\n: Bolt is a unified operations intelligence platform for organizations that
+  manage fleets, field assets, and on-ground personnel. It merges real-time visibility,
+  configurable workflows, and deep reporting into a single web experience.\nWho it’s
+  for\n:\nProduct Owners: orchestrate programs, configure roles, and ...'
+request_time: '2026-01-13T12:18:02.063Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nThe provided snippets do
+  not contain explicit instructions on how to generate a user within the Roadcast
+  Bolt V2 platform. For detailed steps on user creation or management, it is recommended
+  to consult the Bolt V2 Fleet Management documentation or the admin-related sections
+  of the platform documentation.\n\n## Key Details\n- Bolt V2 is a unified operations
+  intelligence platform designed for fleet, field asset, and personnel management
+  [1].\n- The platform supports roles and configurable workflows, which implies user
+  role management capabilities [1].\n- The documentation is structured to help operators
+  and product owners understand workflows and configurations [4].\n\n## References\n[1]
+  Bolt V2 Fleet Management: End-User — https://roadcast.gitbook.io/roadcast-docs/documentation  \n[4]
+  Home | Roadcast Docs — https://roadcast.gitbook.io/roadcast-docs"}'
+state: OK
+trace_id: tr-6cbd76d0ba6b1a58d8583064232706d1
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

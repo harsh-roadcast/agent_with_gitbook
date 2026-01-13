@@ -115,6 +115,7 @@ const normalizeReferences = (refs = []) =>
     }
     return { label: '', title: ref, url: '' };
   });
+const STREAMING_PLACEHOLDER = 'Synthesizing context…';
 
 function GlassCard({ children, className, tone = 'sky' }) {
   return (
@@ -272,10 +273,11 @@ export default function App() {
   const [isChatOpen, setChatOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hey there! Ask me anything about the GitBook docs we just ingested.' }
+    { role: 'assistant', content: 'Hey there! Ask me anything about the GitBook docs we just ingested.', references: [] }
   ]);
   const [isLoading, setLoading] = useState(false);
   const viewportRef = useRef(null);
+  const streamingAssistantIndex = useRef(-1);
 
   useEffect(() => {
     if (viewportRef.current) {
@@ -283,12 +285,44 @@ export default function App() {
     }
   }, [messages, isChatOpen]);
 
+  const patchAssistantMessage = (mutator) => {
+    if (streamingAssistantIndex.current < 0) {
+      return;
+    }
+    setMessages((prev) =>
+      prev.map((msg, idx) => (idx === streamingAssistantIndex.current ? mutator(msg) : msg))
+    );
+  };
+
+  const appendAssistantDelta = (delta = '') => {
+    patchAssistantMessage((msg) => {
+      const base = msg.content === STREAMING_PLACEHOLDER ? '' : (msg.content || '');
+      return { ...msg, content: `${base}${delta}` };
+    });
+  };
+
+  const applyAssistantReferences = (refs = []) => {
+    patchAssistantMessage((msg) => ({ ...msg, references: refs }));
+  };
+
+  const overwriteAssistant = (text) => {
+    patchAssistantMessage((msg) => ({ ...msg, content: text, references: [] }));
+  };
+
   const sendMessage = async () => {
+    if (isLoading) return;
     const trimmed = input.trim();
     if (!trimmed) return;
-    setMessages((prev) => [...prev, { role: 'user', content: trimmed }]);
     setInput('');
     setLoading(true);
+
+    setMessages((prev) => {
+      const userEntry = { role: 'user', content: trimmed };
+      const assistantEntry = { role: 'assistant', content: STREAMING_PLACEHOLDER, references: [] };
+      const nextMessages = [...prev, userEntry, assistantEntry];
+      streamingAssistantIndex.current = nextMessages.length - 1;
+      return nextMessages;
+    });
 
     try {
       const response = await fetch('http://localhost:8000/v1/gitbook/chat', {
@@ -296,23 +330,76 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: trimmed, limit: 4 })
       });
-      const data = await response.json();
-      if (data?.answer) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: data.answer,
-            references: data.references || []
-          }
-        ]);
-      } else {
-        setMessages((prev) => [...prev, { role: 'assistant', content: "I couldn't find anything for that query." }]);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Chat failed.');
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Streaming response is not supported in this browser.');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let receivedChunk = false;
+      let receivedError = false;
+      let shouldAbort = false;
+
+      const processEventLine = (line) => {
+        if (!line || shouldAbort) return;
+        let event;
+        try {
+          event = JSON.parse(line);
+        } catch (err) {
+          return;
+        }
+
+        switch (event.type) {
+          case 'answer_chunk':
+            receivedChunk = true;
+            appendAssistantDelta(event.delta || '');
+            break;
+          case 'references':
+            applyAssistantReferences(event.references || []);
+            break;
+          case 'error':
+            receivedError = true;
+            overwriteAssistant(event.message || 'Chat failed. Please retry.');
+            shouldAbort = true;
+            break;
+          default:
+            break;
+        }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        lines.forEach((line) => processEventLine(line.trim()));
+        if (shouldAbort) {
+          await reader.cancel().catch(() => {});
+          break;
+        }
+      }
+
+      if (!shouldAbort && buffer.trim()) {
+        processEventLine(buffer.trim());
+      }
+
+      if (!receivedChunk && !receivedError) {
+        overwriteAssistant("I couldn't find anything for that query.");
       }
     } catch (error) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: 'Search failed. Check the FastAPI logs.' }]);
+      overwriteAssistant('Search failed. Check the FastAPI logs.');
     } finally {
       setLoading(false);
+      streamingAssistantIndex.current = -1;
     }
   };
 
@@ -399,7 +486,6 @@ export default function App() {
                 {renderMessageContent(msg)}
               </div>
             ))}
-            {isLoading && <div className="bubble assistant">Searching…</div>}
           </div>
           <form className="chat-input" onSubmit={handleSubmit}>
             <input
@@ -407,8 +493,9 @@ export default function App() {
               placeholder="Ask about deployments, billing, telemetry…"
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              disabled={isLoading}
             />
-            <button type="submit" aria-label="Send message">
+            <button type="submit" aria-label="Send message" disabled={isLoading}>
               <PaperPlaneTilt size={20} weight="fill" />
             </button>
           </form>

@@ -6,12 +6,13 @@ from typing import Any, Dict
 
 from elasticsearch import NotFoundError
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from services.auth_service import get_current_user
 from services.bulk_index_service import create_index_if_not_exists, bulk_index_documents
 from services.gitbook_crawler import GitBookCrawler, GitBookCrawlerConfig
-from services.gitbook_agent_service import generate_gitbook_answer
+from services.gitbook_agent_service import stream_gitbook_answer
 from services.gitbook_processor import gitbook_processor
 from services.search_service import es_client
 
@@ -137,12 +138,16 @@ async def search_gitbook(payload: GitBookSearchRequest):
 
 @router.post("/chat")
 async def chat_gitbook(payload: GitBookChatRequest):
-    """Answer questions using the GitBook agent profile."""
-    try:
-        result = generate_gitbook_answer(payload.query, payload.limit)
-        return result
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # pragma: no cover
-        logger.error("GitBook chat failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail="GitBook chat failed") from exc
+    """Stream GitBook answers chunk-by-chunk."""
+
+    def event_stream():
+        try:
+            for event in stream_gitbook_answer(payload.query, payload.limit):
+                yield json.dumps(event).encode("utf-8") + b"\n"
+        except ValueError as exc:
+            yield json.dumps({"type": "error", "message": str(exc)}).encode("utf-8") + b"\n"
+        except Exception as exc:  # pragma: no cover
+            logger.error("GitBook chat failed: %s", exc, exc_info=True)
+            yield json.dumps({"type": "error", "message": "GitBook chat failed"}).encode("utf-8") + b"\n"
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
