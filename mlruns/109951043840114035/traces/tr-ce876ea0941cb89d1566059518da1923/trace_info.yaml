@@ -1,0 +1,31 @@
+execution_duration_ms: 9139
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "yard
+  management kaise kaam karta h", "snippets": ["[1] Title: Yard & Warehouse Management
+  | Documentation | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/yard-and-warehouse-management\nExcerpt:
+  copy\nCopy\nchevron-down\nBasic Docs\nYard & Warehouse Management\nhashtag\nDock
+  & Trip Flow\nOptimizing turn-around time (TAT) is the primary goal of the Yard module.\nTrip
+  Purpose:\nEvery vehicle entering the facility must be assigned a purpose (e.g.,
+  Inward Goods, Outbound Dispatch, or Empty movement).\nDock Activity:\nTrack exactly
+  how long a vehicle stays at a specific dock for loading or unloading.\nApproval
+  Matrix:\nCustom workflows where ga...'
+request_time: '2026-01-13T12:24:22.170Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nYard management in Roadcast
+  focuses on optimizing the turn-around time (TAT) for vehicles entering and exiting
+  a facility. It involves assigning a purpose to each vehicle, tracking dock activity,
+  and managing approvals for gate-in and gate-out events to streamline operations.\n\n##
+  Key Details\n- Every vehicle entering the yard is assigned a trip purpose such as
+  Inward Goods, Outbound Dispatch, or Empty movement [1].\n- The system tracks how
+  long a vehicle stays at a dock for loading or unloading to monitor efficiency [1].\n-
+  An approval matrix allows digital authorization from supervisors for gate-in or
+  gate-out events, ensuring controlled access [1].\n- The TAT Gauge visualizes the
+  average time from gate entry to exit, helping optimize yard operations [1].\n\n##
+  References\n[1] Yard & Warehouse Management | Documentation | Roadcast Docs — https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/yard-and-warehouse-management"}'
+state: OK
+trace_id: tr-ce876ea0941cb89d1566059518da1923
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

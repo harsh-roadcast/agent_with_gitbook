@@ -24,3 +24,11 @@ class QueryError(BaseModel):
     success: bool = Field(False, description="Always false for errors")
     error: str = Field(..., description="Error message")
     error_type: str = Field(..., description="Type of error")
+
+
+class QueryErrorException(Exception):
+    """Exception wrapper that carries a structured QueryError payload."""
+
+    def __init__(self, query_error: QueryError):
+        self.query_error = query_error
+        super().__init__(query_error.error)

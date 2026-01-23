@@ -8,7 +8,7 @@ from elasticsearch import Elasticsearch
 from sentence_transformers import SentenceTransformer
 
 # Import the Pydantic models
-from services.models import QueryResult, VectorQueryResult, QueryError
+from services.models import QueryResult, VectorQueryResult, QueryError, QueryErrorException
 from util.context import get_authorization_header
 
 logger = logging.getLogger(__name__)
@@ -242,6 +242,8 @@ def execute_vector_query(es_query: dict) -> VectorQueryResult:
         embedding = generate_embedding(query_text)
         logger.info(f"Generated embedding for: '{query_text[:50]}...'")
 
+        source_fields = es_query.get('_source', ["filename", "text", "chunk_id"])
+
         # Simple vector search query
         vector_query = {
             "size": size,
@@ -254,7 +256,7 @@ def execute_vector_query(es_query: dict) -> VectorQueryResult:
                     }
                 }
             },
-            "_source": ["filename", "text", "chunk_id"]
+            "_source": source_fields
         }
 
         result = es_client.search(index=index, body=vector_query, request_timeout=30, headers={'authorization': auth_header} if auth_header else {})
@@ -293,9 +295,8 @@ def execute_vector_query(es_query: dict) -> VectorQueryResult:
         )
     except Exception as e:
         logger.error(f"Error executing vector query: {e}")
-        # Create and raise a proper QueryError
         error = QueryError(success=False, error=str(e), error_type="vector_query")
-        raise error from e  # Properly chain the exception
+        raise QueryErrorException(error) from e
 
 def convert_json_to_markdown(data, title: str = "Query Results") -> str:
     """Convert JSON query results to markdown formatted table."""

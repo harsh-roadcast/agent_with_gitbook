@@ -6,13 +6,11 @@ from typing import Any, Dict
 
 from elasticsearch import NotFoundError
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from services.auth_service import get_current_user
 from services.bulk_index_service import create_index_if_not_exists, bulk_index_documents
 from services.gitbook_crawler import GitBookCrawler, GitBookCrawlerConfig
-from services.gitbook_agent_service import stream_gitbook_answer
 from services.gitbook_processor import gitbook_processor
 from services.search_service import es_client
 
@@ -58,10 +56,16 @@ async def ingest_gitbook_documentation(
     """Trigger a fresh GitBook ingestion run."""
     try:
         logger.info("User %s requested GitBook crawl ingest", current_user.get("username"))
+        logger.info("GitBook ingest payload: %s", payload.model_dump())
 
         crawler_config = GitBookCrawlerConfig()
         if payload.max_pages is not None:
             crawler_config.max_pages = payload.max_pages
+        logger.info(
+            "GitBook crawler configured with max_pages=%s (default=%s)",
+            crawler_config.max_pages,
+            GitBookCrawlerConfig().max_pages
+        )
 
         crawler = GitBookCrawler(crawler_config)
         documents = crawler.crawl(start_path=payload.start_path)
@@ -69,14 +73,21 @@ async def ingest_gitbook_documentation(
         if not documents:
             raise HTTPException(status_code=500, detail="Crawl finished but returned no documents")
 
+        chunked_documents = []
+        for raw_doc in documents:
+            chunked_documents.extend(gitbook_processor.prepare_document_chunks(raw_doc))
+
+        if not chunked_documents:
+            raise HTTPException(status_code=500, detail="No embeddable GitBook chunks were generated from the crawl")
+
         # Persist snapshots locally for debugging/exports
         JSONL_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
         with JSONL_SNAPSHOT.open("w", encoding="utf-8") as handle:
-            for doc in documents:
+            for doc in chunked_documents:
                 handle.write(json.dumps(doc, ensure_ascii=False) + "\n")
 
         JSON_SNAPSHOT.write_text(
-            json.dumps(documents, ensure_ascii=False, indent=2),
+            json.dumps(chunked_documents, ensure_ascii=False, indent=2),
             encoding="utf-8"
         )
 
@@ -90,27 +101,19 @@ async def ingest_gitbook_documentation(
 
         create_index_if_not_exists(
             index_name=target_index,
-            mapping={
-                "properties": {
-                    "title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-                    "url": {"type": "keyword"},
-                    "path": {"type": "keyword"},
-                    "headings": {"type": "keyword"},
-                    "text": {"type": "text"},
-                    "crawled_at": {"type": "date"}
-                }
-            }
+            mapping=gitbook_processor.index_mapping()
         )
 
         bulk_result = bulk_index_documents(
             target_index,
-            documents,
-            max_docs=len(documents) or 1
+            chunked_documents,
+            max_docs=len(chunked_documents) or 1
         )
 
         return {
             "message": "GitBook crawl and ingest completed",
             "documents_crawled": len(documents),
+            "chunks_generated": len(chunked_documents),
             "jsonl_path": str(JSONL_SNAPSHOT),
             "json_path": str(JSON_SNAPSHOT),
             "index_name": target_index,
@@ -138,16 +141,8 @@ async def search_gitbook(payload: GitBookSearchRequest):
 
 @router.post("/chat")
 async def chat_gitbook(payload: GitBookChatRequest):
-    """Stream GitBook answers chunk-by-chunk."""
-
-    def event_stream():
-        try:
-            for event in stream_gitbook_answer(payload.query, payload.limit):
-                yield json.dumps(event).encode("utf-8") + b"\n"
-        except ValueError as exc:
-            yield json.dumps({"type": "error", "message": str(exc)}).encode("utf-8") + b"\n"
-        except Exception as exc:  # pragma: no cover
-            logger.error("GitBook chat failed: %s", exc, exc_info=True)
-            yield json.dumps({"type": "error", "message": "GitBook chat failed"}).encode("utf-8") + b"\n"
-
-    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+    """Deprecated in favor of /v1/chat/completions."""
+    raise HTTPException(
+        status_code=410,
+        detail="/v1/gitbook/chat is deprecated. Use /v1/chat/completions with model='gitbook_rag'."
+    )

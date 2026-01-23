@@ -16,7 +16,14 @@ from bs4 import BeautifulSoup
 from elasticsearch import NotFoundError
 
 from services.bulk_index_service import create_index_if_not_exists, bulk_index_documents
-from services.search_service import es_client, execute_query
+from services.models import QueryResult, QueryErrorException
+from services.search_service import (
+    es_client,
+    execute_query,
+    execute_vector_query,
+    convert_vector_results_to_markdown,
+    generate_embedding,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +31,8 @@ DEFAULT_GITBOOK_URL = os.getenv("GITBOOK_SPACE_URL", "https://roadcast.gitbook.i
 DEFAULT_GITBOOK_INDEX = os.getenv("GITBOOK_INDEX_NAME", "gitbook_docs")
 DEFAULT_MAX_PAGES = int(os.getenv("GITBOOK_MAX_PAGES", "150"))
 DEFAULT_AUTH_TOKEN = os.getenv("GITBOOK_AUTH_TOKEN")
+DEFAULT_CHUNK_SIZE = int(os.getenv("GITBOOK_CHUNK_SIZE", "1000"))
+SENTENCE_TRANSFORMER_DIM = 384  # all-MiniLM-L6-v2 output dimension
 
 
 @dataclass
@@ -53,6 +62,7 @@ class GitBookProcessorService:
         })
         if self.config.auth_token:
             self.session.headers["Authorization"] = f"Bearer {self.config.auth_token}"
+        self.chunk_size = DEFAULT_CHUNK_SIZE
 
     # ------------------------------------------------------------------
     # Public surface
@@ -63,8 +73,14 @@ class GitBookProcessorService:
         collection = self.collect_documents(max_pages=max_pages)
         documents = collection["documents"]
         pages_discovered = collection["pages_discovered"]
+        pages_processed = collection["pages_processed"]
+        chunks_generated = collection["chunks_generated"]
 
-        logger.info("Preparing to index %s GitBook documents", len(documents))
+        logger.info(
+            "Preparing to index %s GitBook chunks produced from %s pages",
+            len(documents),
+            pages_processed,
+        )
 
         if force_reindex and es_client.indices.exists(index=self.config.index_name):
             logger.warning("Force reindex requested. Deleting index '%s'", self.config.index_name)
@@ -75,7 +91,11 @@ class GitBookProcessorService:
             mapping=self._index_mapping()
         )
 
-        indexing_result = bulk_index_documents(self.config.index_name, documents)
+        indexing_result = bulk_index_documents(
+            self.config.index_name,
+            documents,
+            max_docs=len(documents) or 1
+        )
         elapsed = round(time.time() - start_time, 2)
 
         return {
@@ -85,7 +105,8 @@ class GitBookProcessorService:
             "documents_indexed": indexing_result.get("indexed_count", 0),
             "failed_documents": indexing_result.get("failed_count", 0),
             "pages_discovered": pages_discovered,
-            "pages_ingested": len(documents),
+            "pages_ingested": pages_processed,
+            "chunks_indexed": chunks_generated,
             "duration_seconds": elapsed
         }
 
@@ -97,28 +118,75 @@ class GitBookProcessorService:
             raise RuntimeError("Unable to discover any GitBook pages to ingest")
 
         documents: List[Dict[str, Any]] = []
+        pages_processed = 0
+
         for page in pages:
-            if max_pages and len(documents) >= max_pages:
+            if max_pages and pages_processed >= max_pages:
                 break
+
             document = self._fetch_page_document(page)
-            if document:
-                documents.append(document)
+            if not document:
+                continue
+
+            chunk_documents = self.prepare_document_chunks(document)
+            if not chunk_documents:
+                continue
+
+            documents.extend(chunk_documents)
+            pages_processed += 1
 
         if not documents:
             raise RuntimeError("GitBook ingestion produced zero documents")
 
         return {
             "documents": documents,
-            "pages_discovered": len(pages)
+            "pages_discovered": len(pages),
+            "pages_processed": pages_processed,
+            "chunks_generated": len(documents)
         }
 
-    def search_documents(self, query: str, limit: int = 5):
-        """Execute a multi-match search across GitBook documents."""
+    def search_documents(self, query: str, limit: int = 5, use_vector: bool = True) -> QueryResult:
+        """Execute a semantic-first search across GitBook documents."""
         if not query or not query.strip():
             raise ValueError("Query must not be empty")
 
+        size = min(max(limit, 1), 25)
+
+        if use_vector:
+            try:
+                vector_payload = {
+                    "query_text": query,
+                    "index": self.config.index_name,
+                    "size": size,
+                    "_source": self._vector_source_fields(),
+                }
+                vector_result = execute_vector_query(vector_payload)
+                documents = vector_result.result
+                if documents:
+                    markdown = convert_vector_results_to_markdown(
+                        documents,
+                        f"Vector results from {self.config.index_name}"
+                    )
+                    return QueryResult(
+                        success=True,
+                        result=documents,
+                        total_count=len(documents),
+                        query_type="vector",
+                        markdown_content=markdown,
+                    )
+            except QueryErrorException as exc:
+                logger.warning(
+                    "Vector search failed for query '%s': %s. Falling back to keyword search.",
+                    query,
+                    exc.query_error.error,
+                )
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.warning(
+                    "Unexpected vector search error for query '%s': %s", query, exc, exc_info=True
+                )
+
         body = {
-            "size": min(max(limit, 1), 25),
+            "size": size,
             "query": {
                 "multi_match": {
                     "query": query,
@@ -358,8 +426,119 @@ class GitBookProcessorService:
             "reading_time_minutes": reading_time
         }
 
-        logger.debug("Prepared GitBook document payload: %s", json.dumps({k: document[k] for k in ("id", "title", "url")}))
-        return document
+        normalized = self._normalize_document_payload(document)
+        logger.debug(
+            "Prepared GitBook document payload: %s",
+            json.dumps({k: normalized[k] for k in ("id", "title", "url")})
+        )
+        return normalized
+
+    # ------------------------------------------------------------------
+    # Document transformation helpers
+    # ------------------------------------------------------------------
+    def prepare_document_chunks(self, document: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Normalize a GitBook document and emit chunk-level payloads with embeddings."""
+        normalized = self._normalize_document_payload(document)
+        return self._build_chunk_documents(normalized)
+
+    def _normalize_document_payload(self, document: Dict[str, Any]) -> Dict[str, Any]:
+        text = (document.get("text") or "").strip()
+        path = document.get("path") or document.get("slug") or document.get("url") or "gitbook"
+        title = document.get("title") or "Untitled"
+        slug = document.get("slug") or self._slugify(path or title)
+        word_count = len(text.split()) if text else document.get("word_count", 0)
+        reading_time = round(word_count / 200, 2) if word_count else document.get("reading_time_minutes", 0.0)
+
+        return {
+            "id": document.get("id") or slug,
+            "title": title,
+            "slug": slug,
+            "url": document.get("url") or "",
+            "path": path,
+            "headings": document.get("headings") or [],
+            "text": text,
+            "excerpt": (document.get("excerpt") or text[:500]) if text else "",
+            "source": document.get("source") or "gitbook",
+            "space": document.get("space") or self.config.space,
+            "last_fetched_at": document.get("last_fetched_at") or datetime.now(timezone.utc).isoformat(),
+            "word_count": word_count,
+            "reading_time_minutes": reading_time,
+        }
+
+    def _build_chunk_documents(self, document: Dict[str, Any]) -> List[Dict[str, Any]]:
+        text = document.get("text", "")
+        if not text:
+            return []
+
+        chunks = self._chunk_text(text)
+        if not chunks:
+            return []
+
+        chunk_documents: List[Dict[str, Any]] = []
+        chunk_count = len(chunks)
+        for chunk_id, chunk_text in enumerate(chunks):
+            try:
+                embedding = generate_embedding(chunk_text)
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.warning("Failed to embed GitBook chunk %s: %s", chunk_id, exc)
+                continue
+
+            chunk_documents.append({
+                "id": f"{document['id']}_chunk_{chunk_id}",
+                "page_id": document["id"],
+                "chunk_id": chunk_id,
+                "chunk_count": chunk_count,
+                "title": document["title"],
+                "slug": document["slug"],
+                "url": document["url"],
+                "path": document["path"],
+                "headings": document.get("headings", []),
+                "text": chunk_text,
+                "excerpt": chunk_text[:500],
+                "source": document["source"],
+                "space": document["space"],
+                "last_fetched_at": document["last_fetched_at"],
+                "word_count": document.get("word_count", 0),
+                "reading_time_minutes": document.get("reading_time_minutes", 0.0),
+                "embedding": embedding,
+            })
+
+        return chunk_documents
+
+    def _chunk_text(self, text: str) -> List[str]:
+        if not text:
+            return []
+
+        words = text.split()
+        chunks: List[str] = []
+        for start in range(0, len(words), self.chunk_size):
+            chunk_words = words[start:start + self.chunk_size]
+            chunk = " ".join(chunk_words).strip()
+            if len(chunk) > 20:
+                chunks.append(chunk)
+        return chunks
+
+    def _vector_source_fields(self) -> List[str]:
+        return [
+            "title",
+            "slug",
+            "url",
+            "path",
+            "headings",
+            "text",
+            "excerpt",
+            "source",
+            "space",
+            "last_fetched_at",
+            "word_count",
+            "reading_time_minutes",
+            "page_id",
+            "chunk_id",
+            "chunk_count",
+        ]
+
+    def index_mapping(self) -> Dict[str, Any]:
+        return self._index_mapping()
 
     def _index_mapping(self) -> Dict[str, Any]:
         return {
@@ -375,7 +554,16 @@ class GitBookProcessorService:
                 "space": {"type": "keyword"},
                 "last_fetched_at": {"type": "date"},
                 "word_count": {"type": "integer"},
-                "reading_time_minutes": {"type": "float"}
+                "reading_time_minutes": {"type": "float"},
+                "page_id": {"type": "keyword"},
+                "chunk_id": {"type": "integer"},
+                "chunk_count": {"type": "integer"},
+                "embedding": {
+                    "type": "dense_vector",
+                    "dims": SENTENCE_TRANSFORMER_DIM,
+                    "index": True,
+                    "similarity": "cosine",
+                },
             }
         }
 

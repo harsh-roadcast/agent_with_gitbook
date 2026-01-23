@@ -3,18 +3,19 @@ import asyncio
 import json
 import logging
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 import uuid
 
+from agents.agent_config import get_agent_config
+from agents.query_agent import QueryAgent
+from modules.query_models import QueryRequest
 from services.auth_service import get_current_user
 from services.conversation_service import ConversationService
-from agents.query_agent import QueryAgent
-from agents.agent_config import get_agent_config
-from modules.query_models import QueryRequest
+from services.gitbook_agent_service import generate_gitbook_answer, stream_gitbook_answer
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,8 @@ router = APIRouter(tags=["chat"])
 
 # Initialize conversation service
 conversation_service = ConversationService()
+
+GITBOOK_MODEL_NAME = "gitbook_rag"
 
 
 class StreamResponseHandler:
@@ -60,7 +63,26 @@ class StreamResponseHandler:
         return "[DONE]\n\n"
 
 
-async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any], model="LLM_TEXT_SQL", message_id: Optional[str] = None):
+def _sanitize_gitbook_limit(options: Optional[Dict[str, Any]]) -> int:
+    """Clamp GitBook passage limit to a safe window."""
+    if not options:
+        return 4
+    limit = options.get("limit", 4)
+    try:
+        limit_value = int(limit)
+    except (TypeError, ValueError):
+        return 4
+    return max(1, min(10, limit_value))
+
+
+async def generate_stream(
+    query: str,
+    session_id: str,
+    user_info: Dict[str, Any],
+    model: str = "LLM_TEXT_SQL",
+    message_id: Optional[str] = None,
+    gitbook_options: Optional[Dict[str, Any]] = None
+):
     """Generate streaming response with user context - simplified for standardized query_agent format."""
 
     # Initialize handler and validate inputs
@@ -73,6 +95,81 @@ async def generate_stream(query: str, session_id: str, user_info: Dict[str, Any]
 
     # Setup conversation context
     conversation_service.add_user_message(session_id, query, message_id)
+
+    # Route GitBook chats through the shared streaming pipeline
+    if model == GITBOOK_MODEL_NAME:
+        limit = _sanitize_gitbook_limit(gitbook_options)
+        gitbook_response = {"answer": "", "references": []}
+
+        try:
+            loop = asyncio.get_running_loop()
+            events = await loop.run_in_executor(
+                None,
+                lambda: list(stream_gitbook_answer(query, limit))
+            )
+
+            for event in events:
+                event_type = event.get("type")
+                if event_type == "answer_chunk":
+                    chunk = event.get("delta", "")
+                    if not chunk:
+                        continue
+                    gitbook_response["answer"] += chunk
+                    payload = {
+                        "type": "gitbook_answer_chunk",
+                        "content": chunk,
+                        "render_type": "text"
+                    }
+                    yield handler.create_sse_response(payload)
+                elif event_type == "references":
+                    references = event.get("references", [])
+                    gitbook_response["references"] = references
+                    payload = {
+                        "type": "gitbook_references",
+                        "content": references,
+                        "render_type": "references"
+                    }
+                    yield handler.create_sse_response(payload)
+                elif event_type == "status":
+                    payload = {
+                        "type": "gitbook_status",
+                        "content": event.get("message", ""),
+                        "render_type": "debug"
+                    }
+                    yield handler.create_sse_response(payload)
+                elif event_type == "error":
+                    payload = {
+                        "type": "error",
+                        "content": event.get("message", "GitBook chat failed"),
+                        "render_type": "error"
+                    }
+                    yield handler.create_sse_response(payload, finish_reason="error")
+                    yield handler.create_final_response()
+                    return
+        except ValueError as exc:
+            error_payload = {
+                "type": "error",
+                "content": str(exc),
+                "render_type": "error"
+            }
+            yield handler.create_sse_response(error_payload, finish_reason="error")
+            yield handler.create_final_response()
+            return
+        except Exception as exc:  # pragma: no cover
+            logger.error("GitBook stream failed: %s", exc, exc_info=True)
+            error_payload = {
+                "type": "error",
+                "content": "GitBook chat failed",
+                "render_type": "error"
+            }
+            yield handler.create_sse_response(error_payload, finish_reason="error")
+            yield handler.create_final_response()
+            return
+
+        conversation_service.add_assistant_response(session_id, gitbook_response, message_id)
+        yield handler.create_final_response()
+        return
+
     conversation_history = conversation_service.get_conversation_history(session_id)
 
     # Get agent configuration based on model name
@@ -177,19 +274,91 @@ async def chat_completions(request: Request, user_info: Dict[str, Any] = Depends
     stream = data.get("stream", False)
     session_id = data.get("session_id", "default")
     model = data.get("model", "general_assistant")  # Default to general_assistant
+    gitbook_options = data.get("gitbook_options")
     user_id = user_info.get('user_id')
 
     logger.info(f"Chat completion request from user {user_id}: stream={stream}, session={session_id}, model={model}")
 
     if stream:
-        return EventSourceResponse(generate_stream(user_message, session_id, user_info, model=model, message_id=message_id))
+        return EventSourceResponse(
+            generate_stream(
+                user_message,
+                session_id,
+                user_info,
+                model=model,
+                message_id=message_id,
+                gitbook_options=gitbook_options
+            )
+        )
     else:
-        return await handle_non_streaming_request(user_message, session_id, user_id, model, message_id)
+        return await handle_non_streaming_request(
+            user_message,
+            session_id,
+            user_id,
+            model,
+            message_id,
+            gitbook_options=gitbook_options
+        )
 
 
-async def handle_non_streaming_request(user_message: str, session_id: str, user_id: str, model: str, message_id: str):
+async def handle_non_streaming_request(
+    user_message: str,
+    session_id: str,
+    user_id: str,
+    model: str,
+    message_id: str,
+    gitbook_options: Optional[Dict[str, Any]] = None
+):
     """Handle non-streaming chat completion requests."""
     conversation_service.add_user_message(session_id, user_message, message_id)
+
+    if model == GITBOOK_MODEL_NAME:
+        limit = _sanitize_gitbook_limit(gitbook_options)
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(None, lambda: generate_gitbook_answer(user_message, limit))
+        except ValueError as exc:
+            error_response = {
+                "error": {
+                    "message": str(exc),
+                    "type": "invalid_request_error"
+                }
+            }
+            return JSONResponse(content=error_response, status_code=400)
+        except Exception as exc:  # pragma: no cover
+            logger.error("GitBook non-streaming failed: %s", exc, exc_info=True)
+            error_response = {
+                "error": {
+                    "message": "GitBook chat failed",
+                    "type": "processing_error"
+                }
+            }
+            return JSONResponse(content=error_response, status_code=500)
+
+        conversation_service.add_assistant_response(session_id, result, message_id)
+
+        response = {
+            "id": f"chatcmpl-{session_id}-{time.time()}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": result
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
+            },
+            "user_id": user_id
+        }
+        return JSONResponse(content=response)
+
     conversation_history = conversation_service.get_conversation_history(session_id)
 
     # Get agent configuration based on model name

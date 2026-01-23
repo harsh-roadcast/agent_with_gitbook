@@ -1,0 +1,33 @@
+execution_duration_ms: 20403
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "Tell
+  me about Bolt", "snippets": ["[1] Title: Bolt V2 Fleet Management: End-User | Documentation
+  | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation\nExcerpt:
+  copy\nCopy\nchevron-down\nBolt V2 Fleet Management: End-User\nReal-time fleet intelligence
+  and configurable workflows that keep product owners and consumers moving in sync.\nWhat
+  it is\n: Bolt is a unified operations intelligence platform for organizations that
+  manage fleets, field assets, and on-ground personnel. It merges real-time visibility,
+  configurable workflows, and deep reporting into a single web experience.\nWho it’s
+  for\n:\nProduct Owners: orchestrate programs, configure roles, and alig...'
+request_time: '2026-01-13T12:48:18.106Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nBolt is a unified operations
+  intelligence platform designed for organizations managing fleets, field assets,
+  and on-ground personnel. It provides real-time visibility, configurable workflows,
+  and deep reporting within a single web interface to streamline operations and align
+  teams.\n\n## Key Details\n- Bolt V2 offers real-time fleet intelligence and configurable
+  workflows to keep product owners and consumers synchronized [1].\n- It serves multiple
+  roles including product owners who orchestrate programs and portal operators who
+  manage daily operations like devices, trips, and incidents [1].\n- The platform
+  uses a utility-first design system based on Tailwind CSS, with distinct admin and
+  client side interfaces for data management and user experience [4].\n- The documentation
+  is targeted at operators and product owners, helping them understand and implement
+  Bolt effectively [3].\n\n## References\n[1] Bolt V2 Fleet Management: End-User —
+  https://ro...'
+state: OK
+trace_id: tr-de4f79293e2fbf80b712db792743abd8
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

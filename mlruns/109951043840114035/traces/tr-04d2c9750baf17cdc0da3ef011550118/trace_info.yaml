@@ -1,0 +1,30 @@
+execution_duration_ms: 9996
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "what
+  are the types of billing in bolt", "snippets": ["[1] Title: Billing & Enterprise
+  Wallet Logic | Documentation | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/billing-and-enterprise-wallet-logic\nExcerpt:
+  copy\nCopy\nchevron-down\nBasic Docs\nBilling & Enterprise Wallet Logic\nThe system
+  manages financial transactions through an internal Wallet system, supporting two
+  distinct enterprise models.\nhashtag\nCentralized Billing Model\nConcept:\nThe Parent
+  Organization acts as the \"Bank.\"\nLogic:\nAll Child Branches share a single pool
+  of funds.\nCase:\nEven if a Child Branch has no individual budget, it can perform
+  transactions (like li...'
+request_time: '2026-01-13T12:55:03.682Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nBolt supports two types
+  of billing models: Centralized Billing and Decentralized Billing. In the Centralized
+  Billing Model, the Parent Organization acts as the bank, sharing a single pool of
+  funds across all Child Branches. In the Decentralized Billing Model, each branch
+  operates as an independent entity and must maintain its own budget for transactions
+  [1].\n\n## Key Details\n- Centralized Billing allows Child Branches to perform transactions
+  even without individual budgets, as long as the Parent Wallet has funds [1].\n-
+  Decentralized Billing requires each branch to manage its own funds independently,
+  with no shared pool [1].\n\n## References\n[1] Billing & Enterprise Wallet Logic
+  | Documentation | Roadcast Docs — https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/billing-and-enterprise-wallet-logic"}'
+state: OK
+trace_id: tr-04d2c9750baf17cdc0da3ef011550118
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

@@ -1,0 +1,31 @@
+execution_duration_ms: 9644
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "what
+  are the type of billings in bolt", "snippets": ["[1] Title: Bolt V2 Fleet Management:
+  End-User | Documentation | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation\nExcerpt:
+  copy\nCopy\nchevron-down\nBolt V2 Fleet Management: End-User\nReal-time fleet intelligence
+  and configurable workflows that keep product owners and consumers moving in sync.\nWhat
+  it is\n: Bolt is a unified operations intelligence platform for organizations that
+  manage fleets, field assets, and on-ground personnel. It merges real-time visibility,
+  configurable workflows, and deep reporting into a single web experience.\nWho it’s
+  for\n:\nProduct Owners: orchestrate programs, config...'
+request_time: '2026-01-13T12:57:27.577Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nThe provided snippets do
+  not explicitly describe the types of billings in Bolt. However, there is a mention
+  of financial and billing scenarios related to centralized and decentralized billing
+  modes, which affect how funds are managed and transactions are processed.\n\n##
+  Key Details\n- In a centralized billing mode, if a purchase is made with zero local
+  balance, the system automatically charges the Parent Wallet, and the Parent Organization
+  is billed.\n- In a decentralized billing mode, a purchase with zero local balance
+  fails immediately, blocking the transaction until the user recharges.\n- Add-on
+  activations are verified based on wallet type regardless of billing mode [4].\n\n##
+  References\n[4] Core Operational Logic & Expected Behaviors — https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/core-operational-logic-and-expected-behaviors\n\nIf
+  you need detailed information on billing types in Bolt, reviewing the \"Core Operation...'
+state: OK
+trace_id: tr-4dfa47017f7cb21d9898738a44b5fbfc
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT
