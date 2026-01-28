@@ -20,6 +20,26 @@ MAX_FILE_SIZE = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf"}
 
 
+import re
+
+
+INDEX_NAME_PATTERN = re.compile(r"^[a-z0-9._-]+$")
+
+
+def _normalize_index_name(raw_name: str) -> str:
+    normalized = (raw_name or "").strip().lower()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Index name is required")
+    if not INDEX_NAME_PATTERN.fullmatch(normalized):
+        raise HTTPException(
+            status_code=400,
+            detail="Index name can only contain lowercase letters, numbers, dots, underscores, or hyphens"
+        )
+    if normalized in {"_all", "_doc", "_alias"}:
+        raise HTTPException(status_code=400, detail="Index name is reserved")
+    return normalized
+
+
 @router.post("/documents/process")
 async def process_pdf_document(
     index_name: str = Form(..., description="Name of the index to store the vectorized document data"),
@@ -27,9 +47,12 @@ async def process_pdf_document(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Process PDF document with vectorization using foreground processing and DSPy metadata extraction.
+    Queue PDF documents for background processing with vectorization and DSPy metadata extraction.
     Takes in compulsory index name to index the vector data in that index.
     If index doesn't exist, creates it.
+
+    This endpoint returns immediately with task IDs. The actual processing happens asynchronously
+    in Celery worker. Use the status endpoint to check progress.
 
     Args:
         index_name: Required name of the Elasticsearch index to store document vectors
@@ -37,13 +60,10 @@ async def process_pdf_document(
         current_user: Authenticated user information
 
     Returns:
-        JSON response with processing results and extracted metadata
+        JSON response with task IDs and status URLs for tracking background processing
     """
     # Validate index name
-    if not index_name or not index_name.strip():
-        raise HTTPException(status_code=400, detail="Index name is required")
-
-    index_name = index_name.strip().lower()
+    index_name = _normalize_index_name(index_name)
 
     # Create index if it doesn't exist
     try:
@@ -55,20 +75,9 @@ async def process_pdf_document(
                     "chunk_id": {"type": "integer"},
                     "text": {"type": "text", "analyzer": "standard"},
                     "embedding": {"type": "dense_vector", "dims": 384},
-                    "metadata": {
-                        "properties": {
-                            "upload_timestamp": {"type": "date"},
-                            "processing_method": {"type": "keyword"},
-                            "document_title": {"type": "text"},
-                            "document_type": {"type": "keyword"},
-                            "main_topics": {"type": "keyword"},
-                            "key_entities": {"type": "keyword"},
-                            "language": {"type": "keyword"},
-                            "summary": {"type": "text"},
-                            "keywords": {"type": "keyword"}
-                        }
-                    }
+                    "metadata": {"type": "object"} 
                 }
+            
             }
         )
         logger.info(f"Index preparation result: {index_result['message']}")
@@ -93,71 +102,45 @@ async def process_pdf_document(
                 detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024*1024)}MB"
             )
 
-        # Process in foreground with DSPy metadata extraction
+        # Queue for background processing with DSPy metadata extraction
         import tempfile
-        import os
-        from services.document_service import document_processor
+        import os   
+        from tasks.document_tasks import process_pdf_document as process_pdf_task
 
-        # Create temporary file
+        # Create temporary file for background task
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(file_content)
             temp_file_path = temp_file.name
 
         try:
-            logger.info(f"User {current_user.get('username')} processing PDF {file.filename} ({file_size_mb:.1f}MB) in foreground with index '{index_name}'")
+            logger.info(f"User {current_user.get('username')} queueing PDF {file.filename} ({file_size_mb:.1f}MB) for background processing in index '{index_name}'")
 
-            # Process the PDF with DSPy metadata extraction and custom index
-            result = document_processor.process_pdf_file(temp_file_path, file.filename, index_name)
+            # Queue the PDF for background processing (returns immediately)
+            # Background task will handle the actual processing and temp file cleanup
+            result = process_pdf_task.delay(temp_file_path, file.filename, index_name)
 
-            if result["status"] == "success":
-                logger.info(f"Successfully processed PDF {file.filename} for user {current_user.get('username')} in index '{index_name}'")
+            
+            logger.info(f"Successfully queued PDF {file.filename} for user {current_user.get('username')} in index '{index_name}'")
 
-                # Get the extracted metadata
-                metadata = result.get("extracted_metadata", {})
+            # Get the extracted metadata
 
-                results.append({
-                    "message": "PDF processing completed successfully",
-                    "filename": file.filename,
-                    "file_size_mb": round(file_size_mb, 2),
-                    "processing_method": "foreground_with_dspy",
-                    "index_name": index_name,
-                    "index_created": index_result.get("created", False),
-                    "total_chunks": result["total_chunks"],
-                    "indexed_chunks": result["indexed_chunks"],
-                    "failed_chunks": result.get("failed_chunks", 0),
-                    "extracted_metadata": {
-                        "document_title": metadata.get("document_title", ""),
-                        "document_type": metadata.get("document_type", ""),
-                        "main_topics": metadata.get("main_topics", []),
-                        "key_entities": metadata.get("key_entities", []),
-                        "language": metadata.get("language", ""),
-                        "summary": metadata.get("summary", ""),
-                        "keywords": metadata.get("keywords", [])
-                    },
-                    "processing_details": {
-                        "extraction_method": "docling_markdown",
-                        "metadata_extraction": "dspy_ai_powered",
-                        "indexing_status": "completed" if result["indexed_chunks"] > 0 else "failed",
-                        "target_index": result.get("target_index", index_name)
-                    }
-                })
-            else:
-                logger.error(f"Failed to process PDF {file.filename}: {result.get('error', 'Unknown error')}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"PDF processing failed: {result.get('error', 'Unknown error')}"
-                )
+            results.append({
+                "message": "Processing started",
+                "filename": file.filename,
+                "task_id": result.id,
+                "status_url": f"/documents/status/{result.id}"
+            })
+            
 
         except Exception as e:
-            logger.error(f"Error processing PDF {file.filename}: {e}", exc_info=True)
+            logger.error(f"Error queueing PDF {file.filename}: {e}", exc_info=True)
+            # Clean up temp file on error
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
             raise HTTPException(
                 status_code=500,
                 detail=f"PDF processing failed: {str(e)}"
             )
-        finally:
-            # Clean up temporary file
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
 
     return results
 

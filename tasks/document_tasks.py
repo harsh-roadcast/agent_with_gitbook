@@ -15,14 +15,14 @@ from core.config import config_manager
 logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True, name="tasks.document_tasks.process_pdf_document")
-def process_pdf_document(self, file_content: bytes, filename: str, user_id: str = None) -> Dict[str, Any]:
+def process_pdf_document(self, file_path: str, filename: str, index_name: str) -> Dict[str, Any]:
     """
     Background task to process PDF document with vectorization.
 
     Args:
-        file_content: PDF file content as bytes
+        file_path: Path to the PDF file
         filename: Original filename
-        user_id: User ID for tracking
+        index_name: Name of the Elasticsearch index to store document vectors
 
     Returns:
         Processing results
@@ -34,12 +34,7 @@ def process_pdf_document(self, file_content: bytes, filename: str, user_id: str 
             meta={"status": "Starting PDF processing", "progress": 0}
         )
 
-        logger.info(f"Starting background PDF processing for: {filename}")
-
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-            temp_file.write(file_content)
-            temp_file_path = temp_file.name
+        logger.info(f"Starting background PDF processing for: {filename} in index '{index_name}'")
 
         try:
             # Update progress
@@ -48,8 +43,8 @@ def process_pdf_document(self, file_content: bytes, filename: str, user_id: str 
                 meta={"status": "Converting document", "progress": 25}
             )
 
-            # Process the PDF
-            result = document_processor.process_pdf_file(temp_file_path, filename)
+            # Process the PDF with the specified index
+            result = document_processor.process_pdf_file(file_path, filename, index_name)
 
             # Update progress
             current_task.update_state(
@@ -57,24 +52,20 @@ def process_pdf_document(self, file_content: bytes, filename: str, user_id: str 
                 meta={"status": "Generating embeddings", "progress": 75}
             )
 
-            # Store result in Redis for quick access
-            if user_id:
-                result_key = f"document_result:{user_id}:{filename}"
-                redis_client.setex(result_key, 3600, str(result))  # Store for 1 hour
-
             # Final update
             current_task.update_state(
                 state="SUCCESS",
                 meta={"status": "Processing completed", "progress": 100, "result": result}
             )
-
-            logger.info(f"PDF processing completed for: {filename}")
+     
+            logger.info(f"PDF processing completed for: {filename} in index '{index_name}'")
             return result
-
+        
         finally:
             # Clean up temporary file
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
+            if os.path.exists(file_path):
+                os.unlink(file_path)
+                logger.info(f"Cleaned up temporary file: {file_path}")
 
     except Exception as e:
         logger.error(f"Error processing PDF {filename}: {e}", exc_info=True)

@@ -1,0 +1,32 @@
+execution_duration_ms: 6
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "what
+  is bolt v2?", "snippets": ["[1] Title: UI/UX Specifications & Design System | Documentation
+  | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/advanced-concepts/ui-ux-specifications-and-design-system\nExcerpt:
+  copy Copy chevron-down Basic Docs chevron-right Advanced Concepts UI/UX Specifications
+  & Design System This section outlines the visual standards, interaction logic, and
+  user experience principles that define the Bolt V2 platform. hashtag Unified Design
+  Language Bolt V2 uses a utility-first design system built on Tailwind CSS . The
+  goal is to provide a clean, high-performance interface that prioritizes data visibility.
+  Management ...'
+request_time: '2026-01-28T12:19:17.155Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nBolt V2 is a unified operations
+  intelligence platform designed for organizations managing fleets, field assets,
+  and on-ground personnel. It provides real-time visibility, configurable workflows,
+  and deep reporting within a single web interface.\n\n## Key Details\n- Bolt V2 uses
+  a utility-first design system built on Tailwind CSS to deliver a clean, high-performance
+  interface focused on data visibility [1].\n- The platform supports distinct user
+  roles such as product owners who orchestrate programs and portal operators who manage
+  daily operations like devices, trips, and incidents [2].\n- It is intended for fleet,
+  field asset, and team management, helping users move from understanding the platform
+  to deploying it in production [3].\n\n## References\n[1] UI/UX Specifications &
+  Design System — https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/advanced-concepts/ui-ux-specifications-and-design-system  \n[2]
+  Bolt V2 Fleet Management:...'
+state: OK
+trace_id: tr-247f4f19c8d3c9e6ea9dff6f7d6b1cf2
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT

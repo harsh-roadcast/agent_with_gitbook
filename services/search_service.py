@@ -4,12 +4,16 @@ import os
 import time
 from typing import List, Dict, Any
 
+from dotenv import load_dotenv
+
 from elasticsearch import Elasticsearch
 from sentence_transformers import SentenceTransformer
 
 # Import the Pydantic models
 from services.models import QueryResult, VectorQueryResult, QueryError, QueryErrorException
 from util.context import get_authorization_header
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
