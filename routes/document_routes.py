@@ -20,6 +20,26 @@ MAX_FILE_SIZE = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf"}
 
 
+import re
+
+
+INDEX_NAME_PATTERN = re.compile(r"^[a-z0-9._-]+$")
+
+
+def _normalize_index_name(raw_name: str) -> str:
+    normalized = (raw_name or "").strip().lower()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Index name is required")
+    if not INDEX_NAME_PATTERN.fullmatch(normalized):
+        raise HTTPException(
+            status_code=400,
+            detail="Index name can only contain lowercase letters, numbers, dots, underscores, or hyphens"
+        )
+    if normalized in {"_all", "_doc", "_alias"}:
+        raise HTTPException(status_code=400, detail="Index name is reserved")
+    return normalized
+
+
 @router.post("/documents/process")
 async def process_pdf_document(
     index_name: str = Form(..., description="Name of the index to store the vectorized document data"),
@@ -40,10 +60,7 @@ async def process_pdf_document(
         JSON response with processing results and extracted metadata
     """
     # Validate index name
-    if not index_name or not index_name.strip():
-        raise HTTPException(status_code=400, detail="Index name is required")
-
-    index_name = index_name.strip().lower()
+    index_name = _normalize_index_name(index_name)
 
     # Create index if it doesn't exist
     try:
