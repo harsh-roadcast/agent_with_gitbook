@@ -113,7 +113,7 @@ async def process_pdf_document(
         # Process in foreground with DSPy metadata extraction
         import tempfile
         import os
-        from services.document_service import document_processor
+        from tasks.document_tasks import process_pdf_document
 
         # Create temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
@@ -124,7 +124,7 @@ async def process_pdf_document(
             logger.info(f"User {current_user.get('username')} processing PDF {file.filename} ({file_size_mb:.1f}MB) in foreground with index '{index_name}'")
 
             # Process the PDF with DSPy metadata extraction and custom index
-            result = document_processor.process_pdf_file(temp_file_path, file.filename, index_name)
+            result = process_pdf_document.delay(temp_file_path, file.filename, index_name)
 
             if result["status"] == "success":
                 logger.info(f"Successfully processed PDF {file.filename} for user {current_user.get('username')} in index '{index_name}'")
