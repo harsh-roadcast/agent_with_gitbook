@@ -269,3 +269,7 @@ def reindex_documents(self, source_index: str, target_index: str,
             meta={"status": "Reindexing failed", "error": str(e)}
         )
         raise
+
+@celery_app.task(name="tasks.bulk_index_tasks.gitbook_index_documents")
+async def gitbook_index_documents():
+    pass

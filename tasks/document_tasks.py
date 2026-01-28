@@ -2,13 +2,15 @@
 import logging
 import os
 import tempfile
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 from celery import current_task
 
 from celery_app import celery_app
 from services.document_service import document_processor
+from services.gitbook_service import ingest_space
 from util.redis_client import redis_client
+from core.config import config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -209,5 +211,48 @@ def extract_document_structure(self, file_content: bytes, filename: str) -> Dict
         current_task.update_state(
             state="FAILURE",
             meta={"status": "Structure extraction failed", "error": str(e)}
+        )
+        raise
+
+@celery_app.task(bind=True, name="tasks.document_tasks.crawl_gitbook_repository")
+def crawl_gitbook_repository(self, max_pages: Optional[int] = None, force_reindex: bool = False) -> Dict[str, Any]:
+    """Run the full GitBook crawl, chunk, and index pipeline."""
+    try:
+        current_task.update_state(
+            state="PROGRESS",
+            meta={"status": "Starting GitBook pipeline", "progress": 0}
+        )
+
+        space_name = config_manager.config.gitbook.base_url
+        logger.info("Starting GitBook pipeline for %s", space_name)
+
+        current_task.update_state(
+            state="PROGRESS",
+            meta={"status": "Collecting GitBook pages", "progress": 10}
+        )
+
+        result = ingest_space(max_pages=max_pages, force_reindex=force_reindex)
+
+        current_task.update_state(
+            state="SUCCESS",
+            meta={
+                "status": "GitBook pipeline completed",
+                "progress": 100,
+                "result": result
+            }
+        )
+
+        logger.info(
+            "GitBook pipeline succeeded: %s documents indexed (%s chunks)",
+            result.get("pages_ingested"),
+            result.get("documents_indexed")
+        )
+        return result
+
+    except Exception as exc:
+        logger.error("GitBook pipeline failed: %s", exc, exc_info=True)
+        current_task.update_state(
+            state="FAILURE",
+            meta={"status": "GitBook pipeline failed", "error": str(exc)}
         )
         raise

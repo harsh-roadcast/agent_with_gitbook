@@ -10,21 +10,18 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from services.gitbook_crawler import GitBookCrawler, GitBookCrawlerConfig  # noqa: E402
+from core.config import config_manager  # noqa: E402
+from services.gitbook_service import crawl_gitbook_documents  # noqa: E402
 
 
 def dump_gitbook(output_path: pathlib.Path, max_pages: int | None, start_path: str) -> dict:
     """Crawl GitBook docs and persist them as JSON array."""
-    config = GitBookCrawlerConfig()
-    if max_pages is not None:
-        config.max_pages = max_pages
-
-    crawler = GitBookCrawler(config)
-    documents = crawler.crawl(start_path=start_path)
+    gitbook_cfg = config_manager.config.gitbook
+    documents = crawl_gitbook_documents(start_path=start_path, max_pages=max_pages)
 
     payload = {
-        "space": config.base_url.split("/")[-1],
-        "base_url": config.base_url,
+        "space": gitbook_cfg.base_url.split("/")[-1],
+        "base_url": gitbook_cfg.base_url,
         "pages_ingested": len(documents),
         "documents": documents,
     }

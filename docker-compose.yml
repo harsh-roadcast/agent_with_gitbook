@@ -1,0 +1,104 @@
+version: "3.9"
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: dspy-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: dspy-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: dspy-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.3
+    container_name: dspy-kibana
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+
+  api:
+    build: .
+    container_name: dspy-api
+    command: ["bash", "-c", "poetry run uvicorn main:app --host 0.0.0.0 --port 8000"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - rabbitmq
+      - elasticsearch
+    volumes:
+      - .:/app
+
+  celery-worker:
+    build: .
+    container_name: dspy-celery-worker
+    command: ["bash", "-c", "poetry run celery -A celery_app worker --loglevel=info --queues=document_processing,bulk_indexing"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    depends_on:
+      - redis
+      - rabbitmq
+      - elasticsearch
+    volumes:
+      - .:/app
+
+  celery-beat:
+    build: .
+    container_name: dspy-celery-beat
+    command: ["bash", "-c", "poetry run celery -A celery_app beat --loglevel=info"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    depends_on:
+      - redis
+      - rabbitmq
+      - elasticsearch
+    volumes:
+      - .:/app
+
+volumes:
+  redis-data:
+  rabbitmq-data:
+  es-data:

@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from dotenv import load_dotenv
 
@@ -39,6 +39,32 @@ class AuthConfig:
     jwt_algorithm: str = "HS256"
     token_expire_minutes: int = 30
 
+@dataclass
+class GitBookCrawlerConfig:
+    base_url: str = "https://roadcast.gitbook.io/roadcast-docs"
+    allowed_path_prefixes: Tuple[str, ...] = tuple(
+        prefix.strip() for prefix in os.getenv("GITBOOK_ALLOWED_PREFIXES", "/documentation").split(",") if prefix.strip()
+    )
+    max_pages: int = 200
+    request_timeout: int = 15
+    auth_token: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.base_url:
+            self.base_url = "https://roadcast.gitbook.io/roadcast-docs"
+        self.base_url = self.base_url.rstrip("/")
+        if not self.allowed_path_prefixes:
+            self.allowed_path_prefixes = ("/",)
+        else:
+            self.allowed_path_prefixes = tuple(prefix if prefix.startswith("/") else f"/{prefix}" for prefix in self.allowed_path_prefixes)
+
+
+@dataclass
+class GitBookProcessorConfig:
+    index_name: str = os.getenv("GITBOOK_INDEX_NAME", "gitbook_docs")
+    max_pages: int = int(os.getenv("GITBOOK_MAX_PAGES", "150"))
+    chunk_size: int = int(os.getenv("GITBOOK_CHUNK_SIZE", "1000"))
+
 
 @dataclass
 class AppConfig:
@@ -46,6 +72,8 @@ class AppConfig:
     elasticsearch: ElasticsearchConfig
     models: ModelConfig
     auth: AuthConfig
+    gitbook: GitBookCrawlerConfig
+    gitbook_processor: GitBookProcessorConfig
     log_level: str = "INFO"
 
 
@@ -96,10 +124,24 @@ class ConfigManager:
             token_expire_minutes=int(os.getenv('TOKEN_EXPIRE_MINUTES', '30'))
         )
 
+        gitbook_crawler_config = GitBookCrawlerConfig(
+            base_url=os.getenv("GITBOOK_SPACE_URL", "https://roadcast.gitbook.io/roadcast-docs"),
+            auth_token=os.getenv("GITBOOK_AUTH_TOKEN"),
+            max_pages=int(os.getenv("GITBOOK_CRAWLER_MAX_PAGES", "200"))
+        )
+
+        gitbook_processor_config = GitBookProcessorConfig(
+            index_name=os.getenv("GITBOOK_INDEX_NAME", "gitbook_docs"),
+            max_pages=int(os.getenv("GITBOOK_MAX_PAGES", "150")),
+            chunk_size=int(os.getenv("GITBOOK_CHUNK_SIZE", "1000"))
+        )
+
         return AppConfig(
             elasticsearch=elasticsearch_config,
             models=model_config,
             auth=auth_config,
+            gitbook=gitbook_crawler_config,
+            gitbook_processor=gitbook_processor_config,
             log_level=os.getenv('LOG_LEVEL', 'INFO')
         )
 
