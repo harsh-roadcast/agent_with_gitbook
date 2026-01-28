@@ -1,7 +1,12 @@
 """Celery configuration for background task processing."""
 import os
+import sys
 
 from celery import Celery
+
+# Fix for macOS forking issues with CoreFoundation
+if sys.platform == "darwin":
+    os.environ.setdefault("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES")
 
 # Celery configuration
 celery_app = Celery(
@@ -31,6 +36,8 @@ celery_app.conf.update(
     worker_disable_rate_limits=False,
     task_compression="gzip",
     result_compression="gzip",
+    # Use solo pool on macOS to avoid forking issues with CoreFoundation
+    worker_pool="solo" if sys.platform == "darwin" else "prefork",
 )
 
 # Optional: Configure periodic tasks

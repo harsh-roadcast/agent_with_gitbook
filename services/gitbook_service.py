@@ -755,9 +755,8 @@ def generate_gitbook_answer(query: str, limit: int = 4) -> Dict[str, Any]:
 
     if not documents:
         return {
-            "answer": "## Direct Answer\nI couldn't find anything for that question.\n\n## Key Details\n- No GitBook passages matched the query.\n\n## References\n*None*",
+            "answer": "## Direct Answer\nI couldn't find anything for that question.\n\n## Key Details\n- No GitBook passages matched the query.",
             "references": [],
-            "documents": [],
         }
 
     snippets = _prepare_snippets(documents)
@@ -766,11 +765,22 @@ def generate_gitbook_answer(query: str, limit: int = 4) -> Dict[str, Any]:
     instructions = "\n".join(
         agent_config.query_instructions
         + [
-            "Follow the template strictly:",
-            "## Direct Answer\n<2-3 sentence summary>",
-            "## Key Details\n- Bullet fact with inline [number]\n- Another fact",
-            "## References\n[List every reference as [n] Title — URL]",
-            "Keep the overall response under 150 words unless the user explicitly asks for a detailed or long explanation.",
+            "CRITICAL CONSTRAINTS:",
+            "- MAXIMUM 100-120 WORDS for entire response",
+            "- Use ONLY this exact format:",
+            "",
+            "## Direct Answer",
+            "<1-2 concise sentences summarizing the answer>",
+            "",
+            "## Key Details",
+            "- First key point with citation [1]",
+            "- Second key point with citation [2]",
+            "- Third key point with citation [3]",
+            "",
+            "DO NOT write paragraphs. DO NOT write long explanations.",
+            "DO NOT include the References section - it will be added automatically.",
+            "Be extremely concise and direct. Cite sources using [number].",
+            "If user asks for 'detailed', 'comprehensive', or 'in-depth' answer, you may use up to 200 words.",
         ]
     )
 
@@ -784,18 +794,20 @@ def generate_gitbook_answer(query: str, limit: int = 4) -> Dict[str, Any]:
 
     answer_text = response.answer_markdown.strip() if response and getattr(response, "answer_markdown", None) else ""
     if not answer_text:
-        answer_text = "## Direct Answer\nI'm unable to draft a summary right now.\n\n## Key Details\n- Try again shortly.\n\n## References\n*None*"
+        answer_text = "## Direct Answer\nI'm unable to draft a summary right now.\n\n## Key Details\n- Try again shortly."
 
+    # Remove any References section from LLM output (we add it separately)
     if "## References" in answer_text:
         answer_text = answer_text.split("## References", 1)[0].strip()
 
-    if not _wants_detailed_answer(query):
-        answer_text = _enforce_word_limit(answer_text, 150)
+    # Enforce word limit: 120 words default, 200 for detailed requests
+    word_limit = 200 if _wants_detailed_answer(query) else 120
+    answer_text = _enforce_word_limit(answer_text, word_limit)
 
+    # Return minimal response - only answer and references, no raw documents
     return {
         "answer": answer_text,
         "references": references,
-        "documents": documents,
     }
 
 
@@ -806,7 +818,6 @@ def stream_gitbook_answer(query: str, limit: int = 4) -> Iterator[Dict[str, Any]
 
     answer_text = result.get("answer", "")
     references = result.get("references", [])
-    documents = result.get("documents", [])
 
     has_chunk = False
     for chunk in _chunk_answer_text(answer_text):

@@ -1,0 +1,28 @@
+execution_duration_ms: 10
+request_preview: '{"system_prompt": "You are Roadcast''s documentation concierge.
+  Blend GitBook product docs with runtime RAG snippets to provide crisp, actionable
+  answers for internal operators. Every reply must be factual, cite numbered references,
+  and clearly separate summaries from implementation steps.", "user_question": "what
+  is bolt v2?", "snippets": ["[1] Title: UI/UX Specifications & Design System | Documentation
+  | Roadcast Docs\nURL: https://roadcast.gitbook.io/roadcast-docs/documentation/basic-docs/advanced-concepts/ui-ux-specifications-and-design-system\nExcerpt:
+  copy Copy chevron-down Basic Docs chevron-right Advanced Concepts UI/UX Specifications
+  & Design System This section outlines the visual standards, interaction logic, and
+  user experience principles that define the Bolt V2 platform. hashtag Unified Design
+  Language Bolt V2 uses a utility-first design system built on Tailwind CSS . The
+  goal is to provide a clean, high-performance interface that prioritizes data visibility.
+  Management ...'
+request_time: '2026-01-28T12:24:01.118Z'
+response_preview: '{"answer_markdown": "## Direct Answer\nBolt V2 is a unified operations
+  intelligence platform designed for managing fleets, field assets, and on-ground
+  personnel with real-time visibility and configurable workflows.\n\n## Key Details\n-
+  Bolt V2 uses a utility-first design system built on Tailwind CSS for a clean, high-performance
+  interface [1].\n- It merges real-time fleet intelligence, configurable workflows,
+  and deep reporting into a single web experience [2].\n- The platform supports roles
+  for product owners and portal operators to orchestrate programs and run daily operations
+  [2][3]."}'
+state: OK
+trace_id: tr-85fa850149e7fbbab9fc1ae50f3636b6
+trace_location:
+  mlflow_experiment:
+    experiment_id: '109951043840114035'
+  type: MLFLOW_EXPERIMENT
