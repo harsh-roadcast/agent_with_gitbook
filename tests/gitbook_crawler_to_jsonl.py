@@ -9,7 +9,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from services.gitbook_service import crawl_gitbook_documents, save_documents_as_jsonl  # noqa: E402
+from services.gitbook_service import gitbook_service_manager
 
 
 def main() -> None:
@@ -34,12 +34,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    documents = crawl_gitbook_documents(
+    documents = gitbook_service_manager.crawl_gitbook_documents(
         start_path=args.start_path,
         max_pages=args.max_pages
     )
-    save_documents_as_jsonl(documents, args.output)
-
+    gitbook_service_manager.save_documents_as_jsonl(documents, args.output)
     print(f"Saved {len(documents)} GitBook documents to {args.output}")
 
 

@@ -8,7 +8,7 @@ from celery import current_task
 
 from celery_app import celery_app
 from services.document_service import document_processor
-from services.gitbook_service import ingest_space
+from services.gitbook_service import gitbook_service_manager
 from util.redis_client import redis_client
 from core.config import config_manager
 
@@ -222,7 +222,7 @@ def crawl_gitbook_repository(self, max_pages: Optional[int] = None, force_reinde
             meta={"status": "Collecting GitBook pages", "progress": 10}
         )
 
-        result = ingest_space(max_pages=max_pages, force_reindex=force_reindex)
+        result = gitbook_service_manager.ingest_space(max_pages=max_pages, force_reindex=force_reindex)
 
         current_task.update_state(
             state="SUCCESS",

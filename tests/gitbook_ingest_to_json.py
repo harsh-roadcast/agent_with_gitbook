@@ -11,13 +11,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.config import config_manager  # noqa: E402
-from services.gitbook_service import crawl_gitbook_documents  # noqa: E402
+from services.gitbook_service import gitbook_service_manager
 
 
 def dump_gitbook(output_path: pathlib.Path, max_pages: int | None, start_path: str) -> dict:
     """Crawl GitBook docs and persist them as JSON array."""
     gitbook_cfg = config_manager.config.gitbook
-    documents = crawl_gitbook_documents(start_path=start_path, max_pages=max_pages)
+    documents = gitbook_service_manager.crawl_gitbook_documents(start_path=start_path, max_pages=max_pages)
 
     payload = {
         "space": gitbook_cfg.base_url.split("/")[-1],

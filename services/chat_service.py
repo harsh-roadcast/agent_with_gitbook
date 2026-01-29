@@ -9,7 +9,7 @@ from agents.agent_config import get_agent_config
 from agents.query_agent import QueryAgent
 from modules.query_models import QueryRequest
 from services.conversation_service import ConversationService
-from services.gitbook_service import generate_gitbook_answer, stream_gitbook_answer
+from services.gitbook_service import gitbook_service_manager
 from util.stream_handler import StreamResponseHandler
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ class ChatService:
     async def run_gitbook_answer(query: str, limit: int):
         """Run GitBook answer generation in executor."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, lambda: generate_gitbook_answer(query, limit))
+        return await loop.run_in_executor(None, lambda: gitbook_service_manager.generate_gitbook_answer(query, limit))
 
     async def stream_gitbook_response(
         self,
@@ -120,7 +120,7 @@ class ChatService:
 
         try:
             loop = asyncio.get_running_loop()
-            events = await loop.run_in_executor(None, lambda: list(stream_gitbook_answer(query, limit)))
+            events = await loop.run_in_executor(None, lambda: list(gitbook_service_manager.stream_gitbook_answer(query, limit)))
         except ValueError as exc:
             error_payload = {"type": "error", "content": str(exc), "render_type": "error"}
             yield handler.create_sse_response(error_payload, finish_reason="error")
