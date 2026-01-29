@@ -1,32 +1,14 @@
 """Simplified bulk indexing routes - single endpoint with background processing."""
 import logging
-from typing import List, Dict, Any, Optional
 
+from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field, validator
 
 from services.auth_service import get_current_user
+from modules.models import BulkIndexRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["bulk-indexing"])
-
-
-class BulkIndexRequest(BaseModel):
-    """Request model for bulk indexing documents."""
-    index_name: str = Field(..., description="Name of the Elasticsearch index", min_length=1)
-    documents: List[Dict[str, Any]] = Field(..., description="List of documents to index")
-    mapping: Optional[Dict[str, Any]] = Field(default=None, description="Optional index mapping")
-    settings: Optional[Dict[str, Any]] = Field(default=None, description="Optional index settings")
-
-    @validator('index_name')
-    def validate_index_name(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Index name cannot be empty")
-        if not v.islower():
-            raise ValueError("Index name must be lowercase")
-        if any(char in v for char in [' ', '/', '\\', '*', '?', '"', '<', '>', '|']):
-            raise ValueError("Index name contains invalid characters")
-        return v.strip()
 
 
 @router.post("/bulk-index")

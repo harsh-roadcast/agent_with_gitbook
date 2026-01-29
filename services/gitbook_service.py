@@ -830,7 +830,6 @@ def stream_gitbook_answer(query: str, limit: int = 4) -> Iterator[Dict[str, Any]
     yield {
         "type": "references",
         "references": references,
-        "documents": documents,
     }
 
     yield {"type": "done"}

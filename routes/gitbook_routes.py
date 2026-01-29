@@ -6,7 +6,6 @@ from typing import Any, Dict
 
 from elasticsearch import NotFoundError
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
 
 from services.auth_service import get_current_user
 from services.bulk_index_service import create_index_if_not_exists, bulk_index_documents
@@ -17,6 +16,7 @@ from services.gitbook_service import (
     prepare_document_chunks,
     search_documents,
 )
+from modules.models import GitBookIngestRequest, GitBookSearchRequest
 from services.search_service import es_client
 
 logger = logging.getLogger(__name__)
@@ -26,31 +26,6 @@ router = APIRouter(prefix="/v1/gitbook", tags=["gitbook"])
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 JSONL_SNAPSHOT = WORKSPACE_ROOT / "gitbook_docs.jsonl"
 JSON_SNAPSHOT = WORKSPACE_ROOT / "gitbook_docs.json"
-
-
-class GitBookIngestRequest(BaseModel):
-    force_reindex: bool = Field(False, description="Drop and recreate the index before ingesting")
-    max_pages: int | None = Field(
-        default=None,
-        ge=1,
-        le=500,
-        description="Optional hard limit for number of pages to ingest"
-    )
-    start_path: str = Field("/documentation", description="GitBook path to start crawling from")
-    index_name: str | None = Field(
-        default=None,
-        description="Optional override for the Elasticsearch index name"
-    )
-
-
-class GitBookSearchRequest(BaseModel):
-    query: str = Field(..., min_length=1, description="Search query text")
-    limit: int = Field(5, ge=1, le=25, description="Maximum number of results to return")
-
-
-class GitBookChatRequest(BaseModel):
-    query: str = Field(..., min_length=1, description="User prompt for the GitBook RAG chatbot")
-    limit: int = Field(4, ge=1, le=10, description="Maximum GitBook passages to ground the answer")
 
 
 @router.post("/ingest")
@@ -73,7 +48,7 @@ async def ingest_gitbook_documentation(
 
         documents = crawl_gitbook_documents(
             start_path=payload.start_path,
-            max_pages=payload.max_pages
+            max_pages=effective_max
         )
 
         if not documents:
@@ -146,11 +121,3 @@ async def search_gitbook(payload: GitBookSearchRequest):
         logger.error("GitBook search failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="GitBook search failed") from exc
 
-
-@router.post("/chat")
-async def chat_gitbook(payload: GitBookChatRequest):
-    """Deprecated in favor of /v1/chat/completions."""
-    raise HTTPException(
-        status_code=410,
-        detail="/v1/gitbook/chat is deprecated. Use /v1/chat/completions with model='gitbook_rag'."
-    )
