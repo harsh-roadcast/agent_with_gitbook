@@ -171,23 +171,9 @@ class GitBookIndexer:
         }
 
     def _build_page_index(self) -> List[Dict[str, Any]]:
-        """Build index of all pages to ingest."""
-        manifest = self._fetch_manifest()
-        pages = self._extract_manifest_pages(manifest) if manifest else []
-
-        if not pages:
-            logger.warning(
-                "Manifest parsing failed, falling back to sitemap for %s",
-                self.base_url,
-            )
-            pages = self._extract_sitemap_pages()
-
-        if not pages:
-            logger.warning(
-                "Sitemap parsing failed, falling back to crawler for %s",
-                self.base_url,
-            )
-            pages = self._crawl_pages()
+        """Build index of all pages to ingest using crawler."""
+        logger.info("Discovering pages via breadth-first crawl")
+        pages = self._crawl_pages()
 
         unique_pages = {page["url"]: page for page in pages}
         logger.info("Discovered %s unique GitBook pages", len(unique_pages))
