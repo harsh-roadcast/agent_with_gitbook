@@ -12,12 +12,12 @@ logger = logging.getLogger(__name__)
 class GitBookEmbedder:
     """Generates embeddings for text chunks."""
 
-    def __init__(self, embedding_dim: int = 384):
+    def __init__(self, embedding_dim: int = 3072):
         """
         Initialize embedder.
         
         Args:
-            embedding_dim: Dimension of embedding vectors
+            embedding_dim: Dimension of embedding vectors (default: 3072 for text-embedding-3-large)
         """
         self.embedding_dim = embedding_dim
 

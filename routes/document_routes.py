@@ -74,7 +74,7 @@ async def process_pdf_document(
                     "filename": {"type": "keyword"},
                     "chunk_id": {"type": "integer"},
                     "text": {"type": "text", "analyzer": "standard"},
-                    "embedding": {"type": "dense_vector", "dims": 384},
+                    "embedding": {"type": "dense_vector", "dims": 3072},
                     "metadata": {"type": "object"} 
                 }
             
