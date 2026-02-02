@@ -9,6 +9,7 @@ import dspy
 from elasticsearch import NotFoundError
 
 from agents.agent_config import get_agent_by_name
+from modules.keyword_extractor import keyword_extractor
 from modules.signatures import GitBookAnswerSignature
 from services.models import QueryErrorException, QueryResult
 from services.search_service import (
@@ -66,11 +67,15 @@ class GitBookSearchService:
         # Try vector search first
         if use_vector:
             try:
+                # Extract keywords to enhance search
+                keywords = keyword_extractor.extract_keywords(query)
+                
                 vector_payload = {
                     "query_text": query,
                     "index": self.index_name,
                     "size": size,
                     "_source": self.VECTOR_SOURCE_FIELDS,
+                    "keywords": keywords,  # Add keywords for hybrid search
                 }
                 vector_result = execute_vector_query(vector_payload)
                 documents = vector_result.result

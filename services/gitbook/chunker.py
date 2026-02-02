@@ -1,5 +1,6 @@
 """Text chunking for GitBook documents."""
 from __future__ import annotations
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import logging
 from typing import Dict, List
@@ -15,10 +16,12 @@ class GitBookChunker:
         Initialize chunker.
         
         Args:
-            chunk_size: Number of words per chunk
+            chunk_size: Number of words per chunk (converted to ~characters internally)
             min_chunk_length: Minimum character length for a chunk
         """
-        self.chunk_size = chunk_size
+        
+        self.chunk_size_chars = chunk_size * 6
+        self.chunk_overlap = int(self.chunk_size_chars * 0.15)  
         self.min_chunk_length = min_chunk_length
 
     def chunk_document(self, document: Dict) -> List[Dict]:
@@ -35,7 +38,14 @@ class GitBookChunker:
         if not text:
             return []
 
-        chunks = self._split_text(text)
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size_chars,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", " ", ""],
+            length_function=len,
+        )
+
+        chunks = splitter.split_text(text)
         if not chunks:
             return []
 
@@ -64,27 +74,4 @@ class GitBookChunker:
 
         return chunk_documents
 
-    def _split_text(self, text: str) -> List[str]:
-        """
-        Split text into word-based chunks.
-        
-        Args:
-            text: Full text content
-            
-        Returns:
-            List of text chunks
-        """
-        if not text:
-            return []
-
-        words = text.split()
-        chunks: List[str] = []
-        
-        for start in range(0, len(words), self.chunk_size):
-            chunk_words = words[start : start + self.chunk_size]
-            chunk = " ".join(chunk_words).strip()
-            
-            if len(chunk) >= self.min_chunk_length:
-                chunks.append(chunk)
-        
-        return chunks
+    

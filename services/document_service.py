@@ -10,7 +10,7 @@ torch.set_default_device("cpu")
 
 import dspy
 from docling.document_converter import DocumentConverter
-from services.search_service import get_es_client, get_sentence_transformer_model
+from services.search_service import get_es_client, get_sentence_transformer_model, generate_embedding
 from modules.signatures import DocumentMetadataExtractor
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ class DocumentProcessor:
 
     def create_embedding(self, text: str) -> List[float]:
         """Create embedding for text."""
-        return self.embedding_model.encode(text, convert_to_tensor=False).tolist()
+        return generate_embedding(text)
 
     def process_pdf_file(self, file_path: str, filename: str, index_name: str = None) -> Dict[str, Any]:
         """Process PDF file - simplified version."""

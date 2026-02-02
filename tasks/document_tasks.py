@@ -104,7 +104,7 @@ def vectorize_document_batch(self, documents: list, batch_size: int = 10) -> Dic
             for doc in batch:
                 try:
                     # Generate embedding for document text
-                    embedding = document_processor.generate_embedding(doc.get("text", ""))
+                    embedding = document_processor.create_embedding(doc.get("text", ""))
                     results.append({
                         "document_id": doc.get("id"),
                         "embedding": embedding,

@@ -7,6 +7,7 @@ import time
 import dspy
 
 from core.interfaces import ProcessedResult, QueryResult, DatabaseType
+from modules.keyword_extractor import keyword_extractor
 from modules.query_models import QueryRequest
 from modules.signatures import ThinkingSignature, QueryWorkflowPlanner, EsQueryProcessor, VectorQueryProcessor, SummarySignature, ChartGenerator
 from services.search_service import execute_query, execute_vector_query, convert_vector_results_to_markdown
@@ -246,11 +247,16 @@ class QueryAgent(dspy.Module):
             self.signature_outputs['VectorQueryProcessor'] = {'vector_query': vector_query}
 
             try:
+                # Extract keywords for hybrid search
+                keywords = keyword_extractor.extract_keywords(vector_query)
+                logger.info(f"Extracted {len(keywords)} keywords for vector search: {keywords}")
+                
                 # Execute vector query
                 vector_query_dict = {
                     "query_text": vector_query,
                     "index": request.vector_db_index,
-                    "size": 100
+                    "size": 100,
+                    "keywords": keywords  # Add keywords for hybrid search
                 }
                 query_result = execute_vector_query(vector_query_dict)
                 rows_count = len(query_result.result) if query_result.result else 0

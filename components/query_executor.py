@@ -8,6 +8,7 @@ import dspy
 
 from core.exceptions import QueryExecutionError, DataParsingError
 from core.interfaces import IQueryExecutor, DatabaseType, QueryResult
+from modules.keyword_extractor import keyword_extractor
 from modules.signatures import EsQueryProcessor, VectorQueryProcessor
 from services.search_service import execute_query, execute_vector_query
 from util.performance import monitor_performance
@@ -79,10 +80,15 @@ class DSPyQueryExecutor(IQueryExecutor):
         print(f"🔍 Generated vector query string: {vector_query_string}")
         # Call execute_vector_query with proper parameters
         try:
+            # Extract keywords for hybrid search
+            keywords = keyword_extractor.extract_keywords(vector_query_string)
+            logger.info(f"Extracted {len(keywords)} keywords for vector search: {keywords}")
+            
             vector_search_params = {
                 'query_text': vector_query_string,
                 'index': vector_db_index,  # Your vector index
-                'size': 25
+                'size': 25,
+                'keywords': keywords  # Add keywords for hybrid search
             }
 
             # Execute the actual vector search

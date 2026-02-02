@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 
 from dotenv import load_dotenv
 
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -26,10 +27,8 @@ class ElasticsearchConfig:
 @dataclass
 class ModelConfig:
     """Model configuration for embeddings and LLM."""
-    embedding_model: str = 'all-MiniLM-L6-v2'
-    openai_api_key: str = ""
-    default_chart_type: str = "column"
-    default_query_size: int = 10
+    embedding_model: str = 'text-embedding-3-large'
+    openai_api_key: str = os.getenv('OPENAI_API_KEY', '')
 
 
 @dataclass
@@ -64,6 +63,7 @@ class GitBookProcessorConfig:
     index_name: str = os.getenv("GITBOOK_INDEX_NAME", "gitbook_docs")
     max_pages: int = int(os.getenv("GITBOOK_MAX_PAGES", "150"))
     chunk_size: int = int(os.getenv("GITBOOK_CHUNK_SIZE", "1000"))
+
 
 
 @dataclass
@@ -112,10 +112,9 @@ class ConfigManager:
         )
 
         model_config = ModelConfig(
-            embedding_model=os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2'),
+            embedding_model=os.getenv('EMBEDDING_MODEL', 'text-embedding-3-large'),
             openai_api_key=os.getenv('OPENAI_API_KEY', ''),
-            default_chart_type=os.getenv('DEFAULT_CHART_TYPE', 'column'),
-            default_query_size=int(os.getenv('DEFAULT_QUERY_SIZE', '10'))
+
         )
 
         auth_config = AuthConfig(

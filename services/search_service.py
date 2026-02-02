@@ -5,9 +5,10 @@ import time
 from typing import List, Dict, Any
 
 from dotenv import load_dotenv
-
 from elasticsearch import Elasticsearch
-from sentence_transformers import SentenceTransformer
+
+from langchain_openai import OpenAIEmbeddings
+from core.config import config_manager
 
 # Import the Pydantic models
 from services.models import QueryResult, VectorQueryResult, QueryError, QueryErrorException
@@ -17,20 +18,20 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-ES_HOST = os.getenv('ES_HOST') or 'http://127.0.0.1:9200'
-ES_USERNAME = os.getenv('ES_USERNAME')
-ES_PASSWORD = os.getenv('ES_PASSWORD')
-ES_VERIFY_CERTS = os.getenv('ES_VERIFY_CERTS', 'False').lower() == 'true'
+es_config = config_manager.config.elasticsearch
 
 es_client = Elasticsearch(
-    [ES_HOST] if isinstance(ES_HOST, str) else ES_HOST,
-    http_auth=(ES_USERNAME, ES_PASSWORD) if ES_USERNAME and ES_PASSWORD else None,
-    verify_certs=ES_VERIFY_CERTS,
-    request_timeout=30
+    [es_config.host] if isinstance(es_config.host, str) else es_config.host,
+    http_auth=(es_config.username, es_config.password) if es_config.username and es_config.password else None,
+    verify_certs=es_config.verify_certs,
+    request_timeout=es_config.request_timeout
 )
 
-# Global sentence transformer model
-sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+# Global OpenAI embeddings model
+sentence_model = OpenAIEmbeddings(
+    model=config_manager.config.models.embedding_model,
+    api_key=config_manager.config.models.openai_api_key
+)
 
 def get_es_client():
     """Returns the global Elasticsearch client instance."""
@@ -43,8 +44,6 @@ def get_sentence_transformer_model():
 def execute_query(query_body: dict, index: str) -> QueryResult:
     """Execute a standard Elasticsearch query"""
     start_time = time.time()
-
-    # Access context data
     auth_header = get_authorization_header()
 
     # Log context information
@@ -53,42 +52,11 @@ def execute_query(query_body: dict, index: str) -> QueryResult:
     logger.info(f"Executing standard ES query on index '{index}'")
 
     try:
-        query_start = time.time()
-        result = es_client.search(index=index, body=query_body, request_timeout=30, headers={'authorization': auth_header} if auth_header else {})
-        query_end = time.time()
-        # Check if response contains aggregations
-        if 'aggregations' in result:
-            # Process aggregation results
-            clean_documents = _process_aggregations(result['aggregations'])
-            total_count = len(clean_documents)
-            logger.info(f"⚡ [TIMING] ES aggregation query completed in {(query_end - query_start) * 1000:.2f}ms - found {total_count} aggregation results on index {index}")
-        else:
-            # Handle standard query results
-            total_hits = result.get('hits', {}).get('total', {})
-            if isinstance(total_hits, dict):
-                total_count = total_hits.get('value', 0)
-            else:
-                total_count = total_hits
-
-            logger.info(f"⚡ [TIMING] ES query completed in {(query_end - query_start) * 1000:.2f}ms - found {total_count} results on index {index}")
-
-            # Extract only the _source data (actual document data) without ES metadata
-            clean_documents = []
-            hits = result.get('hits', {}).get('hits', [])
-
-            for hit in hits:
-                # Only include the _source data, exclude _id, _index, _score, _type, etc.
-                source_data = hit.get('_source', {})
-                if source_data:
-                    clean_documents.append(source_data)
-
-            logger.info(f"📄 Extracted {len(clean_documents)} clean documents without ES metadata")
-
-        # Generate markdown content
+        result = _perform_es_search(query_body, index, auth_header)
+        clean_documents, total_count = _extract_documents_from_result(result, index)
         markdown_content = convert_json_to_markdown(clean_documents, f"Results from {index}")
-
-        end_time = time.time()
-        logger.info(f"🏁 [TIMING] Total execute_query function took {(end_time - start_time) * 1000:.2f}ms")
+        
+        _log_query_completion(start_time)
 
         return QueryResult(
             success=True,
@@ -100,6 +68,84 @@ def execute_query(query_body: dict, index: str) -> QueryResult:
     except Exception as e:
         logger.error(f"Error executing query on index {index}: {e}")
         raise e
+
+
+def _log_query_start(start_time: float, auth_header: str, index: str) -> None:
+    """Log query initialization details."""
+    logger.info(f"🔍 [TIMING] Starting ES query execution at {start_time}")
+    logger.info(f"🔑 Auth header present: {auth_header is not None}")
+    logger.info(f"Executing standard ES query on index '{index}'")
+
+
+def _log_query_completion(start_time: float) -> None:
+    """Log query completion timing."""
+    end_time = time.time()
+    logger.info(f"🏁 [TIMING] Total execute_query function took {(end_time - start_time) * 1000:.2f}ms")
+
+
+def _perform_es_search(query_body: dict, index: str, auth_header: str) -> dict:
+    """Execute Elasticsearch search and return result."""
+    query_start = time.time()
+    result = es_client.search(
+        index=index, 
+        body=query_body, 
+        request_timeout=30, 
+        headers={'authorization': auth_header} if auth_header else {}
+    )
+    query_end = time.time()
+    
+    logger.info(
+        f"⚡ [TIMING] ES query completed in {(query_end - query_start) * 1000:.2f}ms"
+    )
+    
+    return result
+
+
+def _extract_documents_from_result(result: dict, index: str) -> tuple:
+    """Extract clean documents and count from ES result."""
+    if 'aggregations' in result:
+        return _extract_aggregation_results(result, index)
+    else:
+        return _extract_standard_results(result, index)
+
+
+def _extract_aggregation_results(result: dict, index: str) -> tuple:
+    """Extract results from aggregation response."""
+    clean_documents = _process_aggregations(result['aggregations'])
+    total_count = len(clean_documents)
+    logger.info(
+        f"⚡ [TIMING] Found {total_count} aggregation results on index {index}"
+    )
+    return clean_documents, total_count
+
+
+def _extract_standard_results(result: dict, index: str) -> tuple:
+    """Extract results from standard query response."""
+    total_count = _get_total_hits_count(result)
+    logger.info(f"Found {total_count} results on index {index}")
+    
+    clean_documents = _extract_source_documents(result.get('hits', {}).get('hits', []))
+    logger.info(f"📄 Extracted {len(clean_documents)} clean documents without ES metadata")
+    
+    return clean_documents, total_count
+
+
+def _get_total_hits_count(result: dict) -> int:
+    """Get total hits count from ES result."""
+    total_hits = result.get('hits', {}).get('total', {})
+    if isinstance(total_hits, dict):
+        return total_hits.get('value', 0)
+    return total_hits if total_hits else 0
+
+
+def _extract_source_documents(hits: List[dict]) -> List[dict]:
+    """Extract _source data from ES hits."""
+    clean_documents = []
+    for hit in hits:
+        source_data = hit.get('_source', {})
+        if source_data:
+            clean_documents.append(source_data)
+    return clean_documents
 
 def _process_aggregations(aggregations: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
@@ -229,72 +275,43 @@ def _process_aggregations(aggregations: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def generate_embedding(text: str) -> List[float]:
     """Generate an embedding vector for the given text."""
-    embedding = sentence_model.encode(text).tolist()
+    embedding = sentence_model.embed_query(text).tolist()
     logger.debug(f"Generated embedding of length {len(embedding)} for text: {text[:50]}...")
     return embedding
 
+
+
 def execute_vector_query(es_query: dict) -> VectorQueryResult:
-    """Execute a simple vector search query."""
-    logger.info(f"Executing vector search: {es_query}")
-    auth_header = get_authorization_header()
-    query_text = es_query.get('query_text', '')
-    index = es_query.get('index', 'docling_documents')
-    size = min(es_query.get('size', 10), 10)
-
+    """Execute a vector similarity search query with optional keyword enhancement."""
+    start_time = time.time()
+    query_params = _extract_query_params(es_query)
+    
+    _log_query_start(start_time, query_params['auth_header'], query_params['index'])
+    
+    embedding = generate_embedding(query_params['query_text'])
+    logger.info(f"Generated embedding for: '{query_params['query_text'][:50]}...'")
+    
     try:
-        # Generate embedding
-        embedding = generate_embedding(query_text)
-        logger.info(f"Generated embedding for: '{query_text[:50]}...'")
-
-        source_fields = es_query.get('_source', ["filename", "text", "chunk_id"])
-
-        # Simple vector search query
-        vector_query = {
-            "size": size,
-            "query": {
-                "script_score": {
-                    "query": {"match_all": {}},
-                    "script": {
-                        "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                        "params": {"query_vector": embedding}
-                    }
-                }
-            },
-            "_source": source_fields
-        }
-
-        result = es_client.search(index=index, body=vector_query, request_timeout=30, headers={'authorization': auth_header} if auth_header else {})
-
-        # Convert Elasticsearch response to a dictionary if it's not already one
-        if hasattr(result, 'body') and callable(getattr(result, 'body', None)):
-            # For Elasticsearch client versions that return a Response object
-            result_dict = result.body
-        elif hasattr(result, 'to_dict') and callable(getattr(result, 'to_dict', None)):
-            # For Elasticsearch client versions that have to_dict method
-            result_dict = result.to_dict()
-        else:
-            # Try to convert to dict directly or as fallback use the raw response
-            try:
-                result_dict = dict(result)
-            except (TypeError, ValueError):
-                # If all conversions fail, use the object as is and let the model handle it
-                result_dict = {"raw_response": str(result)}
-
-        total_hits = result_dict.get('hits', {}).get('total', {}).get('value', 0)
-        logger.info(f"Vector search successful - found {total_hits} results")
-
-        # Extract clean documents for markdown generation
-        clean_documents = []
-        hits = result_dict.get('hits', {}).get('hits', [])
-        for hit in hits:
-            source_data = hit.get('_source', {})
-            if source_data:
-                clean_documents.append(source_data)
-
-        # Generate markdown content
+        vector_query = _build_vector_query(
+            embedding, 
+            query_params['keywords'], 
+            query_params['source_fields'], 
+            query_params['size']
+        )
+        
+        result = _execute_vector_search(
+            vector_query, 
+            query_params['index'], 
+            query_params['auth_header']
+        )
+        
+        clean_documents = _extract_vector_results(result)
+        
+        _log_query_completion(start_time)
+        
         return VectorQueryResult(
             success=True,
-            result=clean_documents,  # Pass clean documents instead of the full result dict
+            result=clean_documents,
             query_type="vector",
         )
     except Exception as e:
@@ -302,138 +319,255 @@ def execute_vector_query(es_query: dict) -> VectorQueryResult:
         error = QueryError(success=False, error=str(e), error_type="vector_query")
         raise QueryErrorException(error) from e
 
-def convert_json_to_markdown(data, title: str = "Query Results") -> str:
-    """Convert JSON query results to markdown formatted table."""
-    logger.info("🔄 Starting markdown generation from JSON data")
-    logger.info(f"Data type: {type(data).__name__}, Title: '{title}'")
 
-    if not data:
-        logger.warning("No data provided for markdown conversion")
-        return f"# {title}\n\nNo data provided."
-
-    records = []
-    total_count = 0
-
-    # Handle standard ES response with hits
-    if isinstance(data, dict) and 'hits' in data:
-        logger.info("Processing standard Elasticsearch response with hits")
-        hits = data['hits']['hits']
-        if not hits:
-            logger.warning("No hits found in Elasticsearch response")
-            return f"# {title}\n\nNo results found."
-
-        for hit in hits:
-            source = hit.get('_source', {})
-            if source:
-                records.append(source)
-                logger.debug(f"Added hit source: {json.dumps(source)[:100]}...")
-
-        total_hits = data['hits']['total']
-        if isinstance(total_hits, dict):
-            total_count = total_hits.get('value', len(records))
-        else:
-            total_count = total_hits if total_hits else len(records)
-
-        logger.info(f"Processed {len(records)} hits from {total_count} total hits")
-
-    # Handle aggregation results (already processed into list of dictionaries)
-    elif isinstance(data, list):
-        logger.info(f"Processing list data with {len(data)} items")
-        records = [record for record in data if isinstance(record, dict)]
-        total_count = len(records)
-        logger.info(f"Filtered to {len(records)} dictionary records")
-
-        # Special handling for aggregation results with nested structure
-        if records and any(isinstance(v, dict) for record in records for v in record.values()):
-            logger.info("Detected complex nested structure in aggregation results, using special formatter")
-
-            # Log a sample of the data structure
-            if records:
-                sample = records[0]
-                logger.debug(f"Sample record structure: {json.dumps(sample)}")
-
-                # Find and log any nested dictionary values
-                for key, value in sample.items():
-                    if isinstance(value, dict):
-                        logger.debug(f"Nested dictionary found at key '{key}': {json.dumps(value)}")
-
-            return _format_complex_aggregations(records, title)
-
-    # Handle single dictionary result
-    elif isinstance(data, dict):
-        logger.info("Processing single dictionary result")
-        records = [data]
-        total_count = 1
-        logger.debug(f"Dictionary data: {json.dumps(data)[:100]}...")
+def _generate_base_query(keywords: List[str]) -> dict:
+    """
+    Generate base query with keyword enhancement, fuzzy matching, and typo tolerance.
+    
+    Supports:
+    - Fuzzy matching for typos (up to 2 character edits)
+    - Phrase matching for exact terms
+    - Multi-field searching
+    """
+    if keywords and isinstance(keywords, list) and len(keywords) > 0:
+        logger.info(f"Applying keyword filter with {len(keywords)} keywords: {keywords}")
+        
+        keyword_query = " ".join(keywords)
+        
+        return {
+            "bool": {
+                "should": [
+                    # Exact phrase matching (highest priority)
+                    {
+                        "multi_match": {
+                            "query": keyword_query,
+                            "fields": ["text^2.0", "filename^1.5", "title^2.5"],
+                            "type": "phrase",
+                            "boost": 0.5
+                        }
+                    },
+                    # Fuzzy matching for typo tolerance
+                    {
+                        "multi_match": {
+                            "query": keyword_query,
+                            "fields": ["text^1.5", "filename^1.2", "title^2.0"],
+                            "fuzziness": "AUTO",  # AUTO: 1 edit for 3-5 chars, 2 edits for >5 chars
+                            "prefix_length": 2,   # First 2 chars must match exactly
+                            "max_expansions": 50, # Limit fuzzy term expansions
+                            "boost": 0.3
+                        }
+                    },
+                    # Standard matching (fallback)
+                    {
+                        "multi_match": {
+                            "query": keyword_query,
+                            "fields": ["text", "filename", "title^1.5"],
+                            "type": "best_fields",
+                            "operator": "or",
+                            "boost": 0.2
+                        }
+                    }
+                ],
+                "minimum_should_match": 0
+            }
+        }
     else:
-        logger.warning(f"Unsupported data format: {type(data).__name__}")
-        return f"# {title}\n\nUnsupported data format provided."
+        return {"match_all": {}}
 
+
+def _extract_query_params(es_query: dict) -> dict:
+    """Extract and validate query parameters."""
+    return {
+        'auth_header': get_authorization_header(),
+        'query_text': es_query.get('query_text', ''),
+        'index': es_query.get('index', 'docling_documents'),
+        'size': min(es_query.get('size', 10), 10),
+        'keywords': es_query.get('keywords', []),
+        'source_fields': es_query.get('_source', ["filename", "text", "chunk_id"])
+    }
+
+
+def _build_vector_query(
+    embedding: List[float], 
+    keywords: List[str], 
+    source_fields: List[str], 
+    size: int
+) -> dict:
+    """Build Elasticsearch vector query with optional keyword enhancement."""
+    base_query = _generate_base_query(keywords)
+    
+    return {
+        "size": size,
+        "query": {
+            "script_score": {
+                "query": base_query,
+                "script": {
+                    "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                    "params": {"query_vector": embedding}
+                }
+            }
+        },
+        "_source": source_fields
+    }
+
+
+def _execute_vector_search(vector_query: dict, index: str, auth_header: str) -> dict:
+    """Execute vector search against Elasticsearch."""
+    result = es_client.search(
+        index=index, 
+        body=vector_query, 
+        request_timeout=30, 
+        headers={'authorization': auth_header} if auth_header else {}
+    )
+    return _to_dict(result)
+
+
+def _extract_vector_results(result_dict: dict) -> List[dict]:
+    """Extract clean documents from vector search results."""
+    total_hits = result_dict.get('hits', {}).get('total', {}).get('value', 0)
+    logger.info(f"Vector search successful - found {total_hits} results")
+    
+    return _extract_source_documents(result_dict.get('hits', {}).get('hits', []))
+
+
+def _to_dict(es_result) -> dict:
+    """Convert Elasticsearch result object to dictionary."""
+    if hasattr(es_result, 'body'):
+        return es_result.body
+    elif isinstance(es_result, dict):
+        return es_result
+    else:
+        return dict(es_result)
+
+
+def convert_json_to_markdown(data, title="Query Results") -> str:
+    """Convert JSON query results to formatted markdown."""
+    records, total_count = _parse_data_records(data)
+    
     if not records:
         logger.warning("No valid records found after processing")
         return f"# {title}\n\nNo valid records found."
 
-    # Extract all fields from records
+    # Check for complex nested structures in aggregations
+    if _has_complex_nested_structure(records):
+        logger.info("Detected complex nested structure, using special formatter")
+        return _format_complex_aggregations(records, title)
+
+    return _format_standard_table(records, total_count, title)
+
+
+def _parse_data_records(data) -> tuple:
+    """Parse data into records and total count."""
+    if isinstance(data, dict) and 'hits' in data:
+        return _parse_es_hits(data)
+    elif isinstance(data, list):
+        return _parse_list_data(data)
+    elif isinstance(data, dict):
+        return [data], 1
+    else:
+        logger.warning(f"Unsupported data format: {type(data).__name__}")
+        return [], 0
+
+
+def _parse_es_hits(data: dict) -> tuple:
+    """Parse Elasticsearch hits response."""
+    logger.info("Processing standard Elasticsearch response with hits")
+    hits = data['hits']['hits']
+    
+    if not hits:
+        logger.warning("No hits found in Elasticsearch response")
+        return [], 0
+
+    records = [hit.get('_source', {}) for hit in hits if hit.get('_source')]
+    total_count = _get_total_hits_count(data)
+    
+    logger.info(f"Processed {len(records)} hits from {total_count} total hits")
+    return records, total_count
+
+
+def _parse_list_data(data: list) -> tuple:
+    """Parse list data into records."""
+    logger.info(f"Processing list data with {len(data)} items")
+    records = [record for record in data if isinstance(record, dict)]
+    logger.info(f"Filtered to {len(records)} dictionary records")
+    return records, len(records)
+
+
+def _has_complex_nested_structure(records: List[dict]) -> bool:
+    """Check if records have complex nested dictionary structures."""
+    if not records:
+        return False
+    
+    return any(
+        isinstance(v, dict) 
+        for record in records 
+        for v in record.values()
+    )
+
+
+def _format_standard_table(records: List[dict], total_count: int, title: str) -> str:
+    """Format records as a standard markdown table."""
+    all_fields = _extract_all_fields(records)
+    logger.info(f"Extracted {len(all_fields)} unique fields from records")
+    
+    markdown = f"# {title}\n\n"
+    
+    if all_fields:
+        markdown += _create_table_header(all_fields)
+        markdown += _create_table_rows(records, all_fields)
+    
+    markdown += _create_summary_section(total_count, len(records))
+    
+    logger.info(f"✅ Markdown generation completed: {len(records)} records")
+    return markdown
+
+
+def _extract_all_fields(records: List[dict]) -> List[str]:
+    """Extract and sort all unique fields from records."""
     all_fields = set()
     for record in records:
         if isinstance(record, dict):
             all_fields.update(record.keys())
+    return sorted(list(all_fields))
 
-    logger.info(f"Extracted {len(all_fields)} unique fields from records")
-    logger.debug(f"Fields: {sorted(list(all_fields))}")
 
-    # Sort fields alphabetically for consistent display
-    all_fields = sorted(list(all_fields))
+def _create_table_header(fields: List[str]) -> str:
+    """Create markdown table header and separator."""
+    header = "| " + " | ".join(fields) + " |"
+    separator = "| " + " | ".join(["---"] * len(fields)) + " |"
+    return header + "\n" + separator + "\n"
 
-    # Start building markdown table
-    logger.info("Building markdown table")
-    markdown = f"# {title}\n\n"
 
-    if all_fields:
-        # Create table header and separator
-        header = "| " + " | ".join(all_fields) + " |"
-        separator = "| " + " | ".join(["---"] * len(all_fields)) + " |"
-        markdown += header + "\n" + separator + "\n"
-        logger.debug(f"Created header with {len(all_fields)} columns")
+def _create_table_rows(records: List[dict], fields: List[str]) -> str:
+    """Create markdown table rows from records."""
+    rows = []
+    for record in records:
+        row_data = [_format_field_value(record.get(field, "")) for field in fields]
+        rows.append("| " + " | ".join(row_data) + " |")
+    return "\n".join(rows) + "\n"
 
-        # Add rows
-        for i, record in enumerate(records):
-            row_data = []
-            logger.debug(f"Processing record {i+1}/{len(records)}")
 
-            for field in all_fields:
-                value = record.get(field, "")
+def _format_field_value(value: Any) -> str:
+    """Format a field value for markdown table."""
+    # Format numbers for better readability
+    if isinstance(value, float):
+        str_value = f"{value:,.2f}"
+    elif isinstance(value, int):
+        str_value = f"{value:,}"
+    else:
+        str_value = str(value)
+    
+    # Escape markdown special characters
+    return str_value.replace("|", "\\|").replace("\n", " ")
 
-                # Log any potential problematic values
-                if isinstance(value, (list, dict)):
-                    logger.warning(f"Complex value type {type(value).__name__} for field '{field}' in record {i+1}")
 
-                # Format numbers for better readability
-                if isinstance(value, (int, float)):
-                    if isinstance(value, float):
-                        str_value = f"{value:,.2f}"
-                    else:
-                        str_value = f"{value:,}"
-                else:
-                    str_value = str(value)
+def _create_summary_section(total_count: int, displayed_count: int) -> str:
+    """Create summary section for markdown output."""
+    return (
+        f"\n**Total Results**: {total_count:,} records found\n"
+        f"**Displayed**: {displayed_count:,} records\n"
+    )
 
-                # Check for potentially problematic markdown characters
-                if '|' in str_value or '\n' in str_value:
-                    logger.debug(f"Field '{field}' contains special characters that need escaping")
-
-                # Escape pipes and newlines for markdown
-                str_value = str_value.replace("|", "\\|").replace("\n", " ")
-                row_data.append(str_value)
-
-            row = "| " + " | ".join(row_data) + " |"
-            markdown += row + "\n"
-
-    # Add summary information
-    markdown += f"\n**Total Results**: {total_count:,} records found\n"
-    markdown += f"**Displayed**: {len(records):,} records\n"
-
-    logger.info(f"✅ Markdown generation completed: {len(records)} records")
-    return markdown
 
 def _format_complex_aggregations(data: List[Dict[str, Any]], title: str) -> str:
     """

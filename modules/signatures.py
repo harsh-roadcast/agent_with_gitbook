@@ -194,3 +194,12 @@ class GitBookAnswerSignature(dspy.Signature):
     format_instructions: str = dspy.InputField(desc="Explicit formatting instructions, including headings and reference block template")
 
     answer_markdown: str = dspy.OutputField(desc="Well-structured markdown answer that cites references in-text and ends with a references list")
+
+class KeywordExtractionSignature(dspy.Signature):
+    """Extract search keywords from a user query."""
+    
+    query: str = dspy.InputField(desc="User's natural language question or query")
+    keywords: str = dspy.OutputField(
+        desc="Comma-separated list of 5-10 important keywords or phrases that capture the core concepts. "
+             "Include technical terms, entity names, and key concepts. Example: 'authentication, JWT tokens, security'"
+    )
